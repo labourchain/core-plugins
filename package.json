@@ -1,13 +1,13 @@
 {
-  "name": "@labourchain/system-protocols",
+  "name": "@labourchain/core-protocols",
   "version": "0.0.0",
-  "description": "Executable system protocol implementations for LabourChain",
+  "description": "Executable core blockchain protocol implementations for LabourChain",
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "license": "MIT",
   "exports": {
     ".": "./lib/index.js",
-    "./sys-blockheader-v1": "./lib/protocols/sys-blockheader-v1.js"
+    "./core-blockheader-v1": "./lib/protocols/core-blockheader-v1.js"
   },
   "files": [
     "lib/**/*.js",
