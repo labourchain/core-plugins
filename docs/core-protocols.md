@@ -31,6 +31,22 @@ flowchart LR
     Board[Board projection] -.reads.-> Chain
 ```
 
+## Protocol document model
+
+The legacy Service project maintained human-readable protocol documentation paired one-to-one with CUE protocol definitions. Core preserves that model.
+
+For migrated protocols, the preferred maintenance shape is:
+
+```text
+docs/protocols/core-record-v1.md
+schemas/core/core_record_v1.cue
+spec/core-record-v1.md
+```
+
+The human-readable protocol document preserves semantic meaning such as signing/confirmation rules. CUE preserves structural constraints. The implementation spec translates the protocol into deterministic, testable TypeScript/Cordis requirements.
+
+A missing migrated document is a source-migration gap. It must not be treated as permission to redesign an existing protocol rule.
+
 ## Core protocol catalog
 
 The legacy `sys.*` namespace is being replaced by `core.*` for blockchain primitives. The migration is semantic: old application/domain concepts are not mechanically renamed into Core.
@@ -62,6 +78,8 @@ Responsibilities:
 - verify the creator's confirmation for ordinary records;
 - provide the unit that is accepted, referenced, packed, and replayed by Core.
 
+The legacy Service project already defines the record signature semantics in the protocol document paired with `sys_record_v1.cue`. That document must be migrated as the semantic source for `core.record` before the signing implementation is ported. The signature contract is therefore a migration task, not an open design question.
+
 Application-specific payload semantics remain in the referenced protocol package.
 
 ### `core.entity`
@@ -75,6 +93,8 @@ Core does not own organization membership, personal profile, resume, repository 
 Defines the signed block-header representation and verification rules.
 
 The first migration slice preserves the legacy `hash`, `previousHash`, `createdAt`, `packer`, and `signature` fields and the legacy Ed25519 signature payload. The meaning of `hash` in the legacy implementation is tied to the record Merkle root. Whether a future version separates `recordsRoot` from a full block identifier is an open protocol-version decision and must not be changed silently in v1 migration work.
+
+The paired human-readable document is [`protocols/core-blockheader-v1.md`](protocols/core-blockheader-v1.md).
 
 ### `core.block`
 
@@ -144,8 +164,9 @@ Core may provide primitives consumed by these domains, but it does not define th
 These questions are intentionally documented rather than silently decided by migration code:
 
 1. **Executable protocol identity** — how `core.protocol` commits to the exact executable runtime/package used by independent nodes.
-2. **Record signature payload** — the ordinary-record signature contract must be explicit and deterministic before trusted-record verification is implemented.
-3. **Block hash semantics** — preserve the legacy v1 behavior during migration; decide any `recordsRoot` / full-block-id split only through an explicit new version.
-4. **Encoding consistency** — the legacy block-header CUE public-key constraint resembles Base64 while Go decodes hex; compatibility is preserved until a versioned decision resolves it.
+2. **Block hash semantics** — preserve the legacy v1 behavior during migration; decide any `recordsRoot` / full-block-id split only through an explicit new version.
+3. **Encoding consistency** — the legacy block-header CUE public-key constraint resembles Base64 while Go decodes hex; compatibility is preserved until a versioned decision resolves it.
+
+Record signature semantics are not listed here: the legacy Service protocol documentation already defines them and must be migrated with the paired record CUE/schema.
 
 Normative behavior and implementation status are tracked in [`../spec/core-mvp.md`](../spec/core-mvp.md).
