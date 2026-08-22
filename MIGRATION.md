@@ -2,10 +2,11 @@
 
 ## Scope
 
-This first slice migrates only executable behavior already present for
-`sys_blockheader_v1` in `Ri0n72Y/blockchain-service/lib/data/blockHandler.go`.
-It does not redesign protocol IDs, schema layout, block semantics, or the
-Cordis protocol-runtime ABI.
+This first slice migrates executable behavior already present for the former
+`sys_blockheader_v1` protocol in `Ri0n72Y/blockchain-service/lib/data/blockHandler.go`.
+The LabourChain MVP now uses the `core` namespace for core blockchain protocols,
+so this slice also renames the protocol to `core_blockheader_v1` / `core.blockheader`.
+It does not redesign block semantics or the Cordis protocol-runtime ABI.
 
 ## Preserved behavior
 
@@ -25,21 +26,19 @@ behavior.
 
 ## Known existing inconsistency
 
-The current CUE schema for `sys_blockheader_v1` constrains `packer` with:
+The current CUE schema for `core_blockheader_v1` still constrains `packer` with:
 
 ```cue
 "^[A-Za-z0-9+/=]+$"
 ```
 
 which resembles a Base64 character set. The Go verifier, however, uses
-`hex.DecodeString(header.Packer)`. The migration keeps both artifacts as they
-exist today and treats the discrepancy as a protocol decision to resolve
-separately. Changing either side during migration would mix compatibility work
-with protocol evolution.
+`hex.DecodeString(header.Packer)`. The migration preserves the Go runtime
+behavior and carries the schema constraint forward unchanged. The discrepancy
+remains an explicit protocol decision for a later compatibility revision.
 
-## Next candidate
+## Next candidates
 
-After this slice is wired into the LabourChain/Cordis protocol registry, the
-next migration should inventory `sys_record_v1` and `sys_protocol_v1`, because
-current record persistence already contains protocol-specific branching that
-should move out of generic storage code.
+The next core migrations should inventory the former `sys_record_v1` and
+`sys_protocol_v1` behavior, rename them into the `core` namespace, and move
+protocol-specific logic out of generic persistence code.
