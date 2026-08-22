@@ -13,8 +13,9 @@
     "lib/**/*.js",
     "lib/**/*.d.ts",
     "schemas/**/*.cue",
-    "README.md",
-    "MIGRATION.md"
+    "docs/**/*.md",
+    "spec/**/*.md",
+    "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
