@@ -1,8 +1,8 @@
 # Specifications
 
-This directory is the normative source for LabourChain Core protocol behavior.
+This directory is the normative source for LabourChain Core implementation behavior.
 
-`docs/` explains intent and architecture. `spec/` defines behavior that implementation and tests must satisfy.
+`docs/protocols/` preserves protocol meaning. `schemas/` preserves structural constraints. `spec/` defines the exact executable behavior that implementation and tests must satisfy.
 
 ## Requirement language
 
@@ -16,19 +16,23 @@ A specification or requirement may be marked:
 
 - **implemented** — covered by implementation and verification;
 - **planned** — behavior is defined but not implemented yet;
-- **blocked** — implementation must wait for an explicit protocol decision;
+- **source-migration-required** — legacy protocol semantics are known to exist in paired source documentation but that document has not yet been migrated into this repository; this is not a new design decision;
+- **blocked** — implementation must wait for an explicit protocol/design decision;
 - **legacy-compat** — current behavior is intentionally preserved for compatibility;
 - **deferred** — outside the current MVP slice.
 
 ## Development rule
 
-For Core protocol behavior:
+For migrated Core protocol behavior:
 
-1. update the relevant document when scope/intent changes;
-2. update or add the normative spec;
-3. implement only the specified slice;
-4. add tests that map to requirement IDs;
-5. run `pnpm check` before claiming the slice is complete.
+1. recover or update the paired protocol document under `docs/protocols/`;
+2. verify the corresponding CUE schema under `schemas/`;
+3. translate those semantics into the relevant normative spec;
+4. implement only the specified slice;
+5. add tests that map to requirement IDs;
+6. run `pnpm check` before claiming the slice is complete.
+
+A spec must not silently invent behavior when an older protocol document is known to exist. Missing source material is tracked as `source-migration-required`; genuine new protocol choices are tracked as `blocked`.
 
 A migration may preserve legacy behavior without endorsing it as the future design. Breaking protocol changes require an explicit version/spec change and MUST NOT be introduced as incidental refactors.
 
