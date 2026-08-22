@@ -1,6 +1,6 @@
 export {
   canonicalBlockHeaderPayloadV1,
-  sysBlockHeaderV1,
+  coreBlockHeaderV1,
   verifyBlockHeaderV1,
-  type SysBlockHeaderV1,
-} from "./protocols/sys-blockheader-v1.js";
+  type CoreBlockHeaderV1,
+} from "./protocols/core-blockheader-v1.js";
