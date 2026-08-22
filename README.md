@@ -35,3 +35,5 @@ The next Core slices are driven by `spec/core-mvp.md`: `core.record`, `core.prot
 ```bash
 pnpm check
 ```
+
+A completed implementation slice must pass this command before its spec status is changed to `implemented`.
