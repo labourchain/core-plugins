@@ -32,6 +32,21 @@ Status: planned
 
 A breaking change to deterministic protocol behavior **MUST** create an explicit new protocol version/specification. Migration refactors **MUST NOT** silently change existing v1 compatibility behavior.
 
+### CORE-ARCH-005 — protocol document/schema/spec traceability
+Status: planned
+
+A migrated protocol **SHOULD** maintain a one-to-one semantic document paired with its CUE schema, plus an implementation spec that translates that protocol meaning into executable requirements.
+
+The preferred mapping is:
+
+```text
+docs/protocols/core-record-v1.md
+schemas/core/core_record_v1.cue
+spec/core-record-v1.md
+```
+
+When a paired legacy Service protocol document is known to exist, missing migration of that document is a `source-migration-required` condition and **MUST NOT** be treated as permission to redesign existing semantics.
+
 ## 2. Protocol namespace
 
 ### CORE-NS-001 — Core protocol ids
@@ -140,11 +155,15 @@ An ordinary record **MUST** reference a protocol id/version and `protocolHash` t
 The record payload **MUST** satisfy the referenced protocol schema/runtime validation rules before the record is accepted for packing.
 
 ### CORE-REC-004 — trusted record signature
-Status: blocked
+Status: source-migration-required / legacy-compat
 
-An ordinary non-bootstrap record **MUST** carry a creator confirmation signature that can be deterministically verified against the creator identity/public key.
+An ordinary non-bootstrap record **MUST** carry the creator confirmation signature defined by the legacy Service protocol document paired with `sys_record_v1.cue`.
 
-The exact record-signature payload is not defined by the legacy code inspected so far. Implementation **MUST NOT** guess whether the signature covers the raw record, record id, or another canonical form. This requirement remains blocked until a dedicated signature spec is approved.
+That signing contract already exists as protocol source material. Before implementation, the paired legacy document **MUST** be recovered/migrated into `docs/protocols/core-record-v1.md`, and its signing semantics **MUST** be translated into a dedicated `spec/core-record-v1.md` with deterministic test vectors.
+
+Implementation **MUST NOT** infer or replace the signing payload from the CUE field list, `calcRecordID`, or unrelated Go code while the paired protocol document is still absent from this repository.
+
+This requirement is a source-migration task, not a new protocol-design blocker.
 
 ### CORE-REC-005 — bootstrap exception
 Status: planned
@@ -153,7 +172,8 @@ Genesis bootstrap records **MAY** use a version-defined bootstrap creator/signat
 
 ## 6. `core.blockheader` v1
 
-The detailed compatibility contract is defined in [`core-blockheader-v1.md`](core-blockheader-v1.md).
+The human-readable protocol document is [`../docs/protocols/core-blockheader-v1.md`](../docs/protocols/core-blockheader-v1.md).
+The detailed implementation compatibility contract is defined in [`core-blockheader-v1.md`](core-blockheader-v1.md).
 
 ### CORE-BH-001 — legacy header shape
 Status: implemented / legacy-compat
@@ -199,7 +219,7 @@ Status: planned
 
 A packer **MUST NOT** include a record that fails its Core envelope/id/protocol/signature checks or the referenced protocol's validation rules.
 
-Requirements blocked by unresolved specs (for example ordinary record signatures) remain blocking for full trusted packing.
+Full trusted packing depends on migrating the existing ordinary-record signature contract into the Core record protocol document/spec and implementing it.
 
 ### CORE-BLOCK-003 — legacy Merkle root
 Status: planned / legacy-compat
@@ -296,7 +316,7 @@ which includes typecheck, tests, and build.
 ### CORE-TEST-002 — legacy compatibility fixtures
 Status: planned
 
-Where behavior is migrated from Go, the corresponding spec slice **SHOULD** include golden input/output fixtures generated or independently checked against the legacy implementation.
+Where behavior is migrated from Go or legacy protocol documents, the corresponding spec slice **SHOULD** include golden input/output fixtures generated or independently checked against the legacy implementation/source contract.
 
 ### CORE-TEST-003 — spec traceability
 Status: planned
