@@ -28,7 +28,7 @@ The current package renames the blockchain primitives as follows:
 | `sys.record` | `core.record` |
 | `sys.entity` | `core.entity` |
 | `sys.block` | `core.block` |
-| `sys.block-header` | `core.blockheader` |
+| `sys.block-header` | `core.block-header` |
 
 This naming table is a decision of the new package layout. The underlying field and algorithm behavior is projected from the original source.
 
@@ -52,7 +52,7 @@ This naming table is a decision of the new package layout. The underlying field 
 
 ## Current migrated slice
 
-`core.blockheader` ports the executable behavior of `VerifyBlockHeader`:
+`core.block-header` ports the executable behavior of `VerifyBlockHeader`:
 
 - hexadecimal decoding of `packer`;
 - Ed25519 public-key-size validation;
