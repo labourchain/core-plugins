@@ -71,8 +71,8 @@ export function verifyBlockHeaderV1(header: CoreBlockHeaderV1): void {
 }
 
 export const coreBlockHeaderV1 = {
-  id: "core.blockheader",
-  version: 1,
+  id: "core.block-header",
+  version: "0.1.0",
   canonicalize: canonicalBlockHeaderPayloadV1,
   verify: verifyBlockHeaderV1,
 } as const;
