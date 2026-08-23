@@ -1,39 +1,43 @@
-# @labourchain/core-protocols
+# LabourChain Core Protocols
 
-Executable implementations of LabourChain Core blockchain protocols.
+[English](README.en.md)
 
-Core owns the deterministic blockchain rules that turn protocol-described input into verifiable records, register protocols on chain, pack records into blocks, construct/verify genesis, and replay chain state. Application semantics such as Repo membership, LabourFlow records/profiles, Board projects, storage engines, and UI remain outside this package.
+`@labourchain/core-protocols` 是 LabourChain 的核心区块链协议包。
 
-This repository is migrated incrementally from `Ri0n72Y/blockchain-service` and is maintained with a lightweight **spec-driven development** workflow.
+这个仓库正在把原始 `Ri0n72Y/blockchain-service` 中已经存在的协议定义与协议逻辑迁移为可独立使用的 TypeScript 实现，并为后续 Cordis 插件化运行提供基础。
 
-## Documentation
+当前迁移内容包括 CUE 协议、协议对应的可执行逻辑、测试，以及从原始 Service 投影出的开发规格。
 
-- [`docs/core-protocols.md`](docs/core-protocols.md) — architecture, protocol catalog, MVP boundary, minimal authority-node expectations, and open design decisions.
-- [`docs/migration.md`](docs/migration.md) — compatibility baseline and migration plan from the legacy Go service.
-- [`docs/README.md`](docs/README.md) — documentation/spec maintenance workflow.
+## 当前进度
 
-## Specifications
+目前已经迁移第一部分 `core.blockheader`：
 
-- [`spec/core-mvp.md`](spec/core-mvp.md) — normative Core MVP requirements and implementation status.
-- [`spec/core-blockheader-v1.md`](spec/core-blockheader-v1.md) — current `core.blockheader` v1 compatibility contract.
-- [`spec/README.md`](spec/README.md) — specification conventions and status model.
+- `schemas/core/core_blockheader_v1.cue` 保存协议结构；
+- `src/protocols/core-blockheader-v1.ts` 实现原 Go Service 中的 Ed25519 验签逻辑；
+- `tests/core-blockheader-v1.test.ts` 验证兼容行为；
+- `docs/protocols/core-blockheader-v1.md` 与 `spec/core-blockheader-v1.md` 分别保存协议说明和实现规格。
 
-## Current implementation slice
+后续将继续整理和迁移 `record`、`protocol`、`entity`、`block` 与创世区块相关能力。
 
-The current feature branch implements only `core.blockheader` v1 executable verification:
+## 工程结构
 
-- preserve the legacy CUE field structure;
-- preserve the canonical signature payload field order;
-- preserve the legacy Ed25519 verification behavior using hex-encoded public keys and signatures;
-- lock compatibility behavior with tests;
-- document the existing CUE/Go encoding mismatch without silently changing protocol semantics.
+```text
+docs/       协议说明、迁移记录与工程文档
+schemas/    CUE 协议定义
+spec/       从原始 blockchain-service 投影出的开发规格
+src/        TypeScript 实现
+tests/      与协议行为对应的测试
+```
 
-The next Core slices are driven by `spec/core-mvp.md`: `core.record`, `core.protocol`, `core.block`, genesis, and protocol-registration/replay behavior.
+原始 `blockchain-service` 是现有协议语义的事实来源。迁移过程中先读取原始协议文档、CUE 和 Go 实现，再更新本仓库中的 docs/spec 与代码。
 
-## Verify
+## 开发
 
 ```bash
+pnpm install
 pnpm check
 ```
 
-A completed implementation slice must pass this command before its spec status is changed to `implemented`.
+`pnpm check` 会依次执行 typecheck、test 和 build。
+
+更详细的迁移信息见 [`docs/migration.md`](docs/migration.md)，开发规格见 [`spec/`](spec/README.md)。
