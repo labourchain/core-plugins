@@ -31,7 +31,9 @@ The current Core migration targets are:
 - `sys.record` → `core.record`
 - `sys.entity` → `core.entity`
 - `sys.block` → `core.block`
-- `sys.block-header` → `core.blockheader`
+- `sys.block-header` → `core.block-header`
+
+The original block-header protocol version in the source genesis set is `0.1.0`; the migrated runtime descriptor preserves that version.
 
 This rename is a migration decision in the new repository. Field meaning and executable behavior come from the original Service source.
 
@@ -132,6 +134,8 @@ The source consists of:
 - `lib/data/blockHandler.go::VerifyBlockHeader` for runtime verification;
 - `cmd/script/main.go` for genesis header creation/signing.
 
+The migrated protocol id is `core.block-header` and the source version is `0.1.0`.
+
 The runtime verifier and genesis signer currently disagree on the exact signing payload. This is recorded under **Source inconsistencies** below.
 
 ## Block
@@ -197,7 +201,7 @@ The genesis script signs `json.Marshal(header)` while `header.Signature` is stil
 
 `VerifyBlockHeader` constructs a separate anonymous struct containing only `hash`, `previousHash`, `createdAt`, and `packer`, so it verifies a different byte sequence.
 
-The current `core.blockheader` implementation ports the runtime verifier. Genesis signing must not be claimed compatible until this source inconsistency is resolved deliberately.
+The current `core.block-header` implementation ports the runtime verifier. Genesis signing must not be claimed compatible until this source inconsistency is resolved deliberately.
 
 ### Genesis repository protocol hash
 
