@@ -45,7 +45,7 @@ Do not introduce stable requirement IDs during the current development stage. Hu
 
 Prefer small, reviewable migrations over broad rewrites.
 
-Keep protocol semantics separate from runtime/provider choices. Avoid adding abstractions, adapters, compatibility layers, or tests without a concrete requirement from the current migration slice.
+Implementation scope comes from the current spec. Avoid adding abstractions, adapters, compatibility layers, or tests without a concrete requirement from the current migration slice.
 
 Tests should protect meaningful protocol behavior and regressions. Do not add tests only to raise coverage metrics.
 
