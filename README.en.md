@@ -10,7 +10,7 @@ The migration includes CUE protocol schemas, executable protocol logic, tests, a
 
 ## Current status
 
-The first migrated slice is `core.blockheader`:
+The first migrated slice is `core.block-header`:
 
 - `schemas/core/core_blockheader_v1.cue` contains the protocol structure;
 - `src/protocols/core-blockheader-v1.ts` ports the Ed25519 verification behavior from the Go Service;
