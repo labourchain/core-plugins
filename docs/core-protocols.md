@@ -46,13 +46,13 @@ The current migration maps these blockchain primitives:
 | `sys.record` | `core.record` |
 | `sys.entity` | `core.entity` |
 | `sys.block` | `core.block` |
-| `sys.block-header` | `core.blockheader` |
+| `sys.block-header` | `core.block-header` |
 
 The source genesis script also uses `sys.member` and `sys.repo`. Their source behavior remains relevant when the genesis path is migrated, even though the new package organization may place those domain protocols elsewhere.
 
 ## Current executable migration
 
-`core.blockheader` is the first implemented slice.
+`core.block-header` is the first implemented slice.
 
 Its migrated artifacts are:
 
