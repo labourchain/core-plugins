@@ -1,42 +1,42 @@
 # Specifications
 
-This directory is the normative source for LabourChain Core implementation behavior.
+`spec/` contains development specifications projected from the original `Ri0n72Y/blockchain-service` project.
 
-`docs/protocols/` preserves protocol meaning. `schemas/` preserves structural constraints. `spec/` defines the exact executable behavior that implementation and tests must satisfy.
+The original Service project is the factual source for existing protocol semantics. A spec in this repository organizes those facts into an implementation shape that can be used to migrate, test, and review the TypeScript/Cordis implementation.
 
-## Requirement language
+## Source projection rule
 
-The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are normative.
+Before adding or changing a protocol requirement, inspect the corresponding source materials:
 
-Each requirement uses a stable identifier so tests and implementation notes can refer back to the specification.
+- the original human-readable protocol document;
+- the paired CUE schema;
+- the Go model/handler/script that implements the behavior.
 
-## Status
+Every protocol spec should include a **Source** section that names the files it projects from.
 
-A specification or requirement may be marked:
+If a behavior is not supported by the source, it should not be written as an existing protocol requirement. New design work should remain explicitly marked as a proposal until it is accepted as a protocol change.
 
-- **implemented** — covered by implementation and verification;
-- **planned** — behavior is defined but not implemented yet;
-- **source-migration-required** — legacy protocol semantics are known to exist in paired source documentation but that document has not yet been migrated into this repository; this is not a new design decision;
-- **blocked** — implementation must wait for an explicit protocol/design decision;
-- **legacy-compat** — current behavior is intentionally preserved for compatibility;
-- **deferred** — outside the current MVP slice.
+When source artifacts disagree, record the disagreement and state which source behavior the migration currently preserves. Do not silently repair or reconcile it inside a migration spec.
 
-## Development rule
+## Development flow
 
-For migrated Core protocol behavior:
+For an existing protocol:
 
-1. recover or update the paired protocol document under `docs/protocols/`;
-2. verify the corresponding CUE schema under `schemas/`;
-3. translate those semantics into the relevant normative spec;
-4. implement only the specified slice;
-5. add tests that map to requirement IDs;
-6. run `pnpm check` before claiming the slice is complete.
+1. read the original Service materials;
+2. migrate/update the protocol document under `docs/protocols/`;
+3. migrate/update the paired CUE schema under `schemas/`;
+4. write the implementation projection in `spec/`;
+5. implement the smallest required slice;
+6. add meaningful compatibility/regression tests;
+7. run `pnpm check`.
 
-A spec must not silently invent behavior when an older protocol document is known to exist. Missing source material is tracked as `source-migration-required`; genuine new protocol choices are tracked as `blocked`.
+Stable requirement IDs are intentionally not used during the current development stage. Headings and source-path references provide enough traceability while the protocol structure is still changing.
 
-A migration may preserve legacy behavior without endorsing it as the future design. Breaking protocol changes require an explicit version/spec change and MUST NOT be introduced as incidental refactors.
+## Scope control
+
+Strict scope belongs in specifications because it guides implementation and prevents accidental expansion. A spec should state the concrete behavior required for its current slice and avoid introducing abstractions, runtime services, compatibility work, or tests without source-backed or explicitly approved need.
 
 ## Current specifications
 
-- [`core-mvp.md`](core-mvp.md) — umbrella MVP requirements and implementation roadmap.
-- [`core-blockheader-v1.md`](core-blockheader-v1.md) — current executable `core.blockheader` v1 compatibility contract.
+- [`core-mvp.md`](core-mvp.md) — current Core migration projection from the original Service.
+- [`core-blockheader-v1.md`](core-blockheader-v1.md) — executable `core.blockheader` compatibility projection.
