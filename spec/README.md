@@ -39,4 +39,4 @@ Strict scope belongs in specifications because it guides implementation and prev
 ## Current specifications
 
 - [`core-mvp.md`](core-mvp.md) — current Core migration projection from the original Service.
-- [`core-blockheader-v1.md`](core-blockheader-v1.md) — executable `core.blockheader` compatibility projection.
+- [`core-blockheader-v1.md`](core-blockheader-v1.md) — executable `core.block-header` compatibility projection.
