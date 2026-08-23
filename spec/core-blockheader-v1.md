@@ -1,4 +1,4 @@
-# `core.blockheader` v1 Specification
+# `core.block-header` v1 Specification
 
 Status: implemented compatibility projection
 
@@ -9,6 +9,8 @@ This specification projects from:
 - `Ri0n72Y/blockchain-service/schemas/system/sys_blockheader_v1.cue`
 - `Ri0n72Y/blockchain-service/lib/model/types.go`
 - `Ri0n72Y/blockchain-service/lib/data/blockHandler.go::VerifyBlockHeader`
+
+The original protocol id in the source genesis set is `sys.block-header:0.1.0`. The migrated id changes only the namespace prefix and is `core.block-header:0.1.0`.
 
 Genesis signing in `cmd/script/main.go` is related source material but currently disagrees with `VerifyBlockHeader` on the signed byte sequence. That discrepancy is documented in [`core-mvp.md`](core-mvp.md) and [`../docs/migration.md`](../docs/migration.md).
 
