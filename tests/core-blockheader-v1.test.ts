@@ -29,7 +29,7 @@ function fixture(): CoreBlockHeaderV1 {
 }
 
 describe("core_blockheader_v1", () => {
-  it("CORE-BH-002 keeps the legacy Go canonical JSON field order", () => {
+  it("keeps the legacy Go canonical JSON field order", () => {
     const header: CoreBlockHeaderV1 = {
       hash: "h",
       previousHash: "p",
@@ -43,11 +43,11 @@ describe("core_blockheader_v1", () => {
     );
   });
 
-  it("CORE-BH-003 verifies a valid Ed25519 header", () => {
+  it("verifies a valid Ed25519 header", () => {
     expect(() => verifyBlockHeaderV1(fixture())).not.toThrow();
   });
 
-  it("CORE-BH-003 rejects a mutated signed field", () => {
+  it("rejects a mutated signed field", () => {
     const header = fixture();
     header.hash = "mutated";
     expect(() => verifyBlockHeaderV1(header)).toThrow(
@@ -55,7 +55,7 @@ describe("core_blockheader_v1", () => {
     );
   });
 
-  it("CORE-BH-004 preserves the legacy hex interpretation of packer", () => {
+  it("preserves the legacy hex interpretation of packer", () => {
     const header = fixture();
     header.packer = "not-base64==";
     expect(() => verifyBlockHeaderV1(header)).toThrow(
