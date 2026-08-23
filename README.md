@@ -10,7 +10,7 @@
 
 ## 当前进度
 
-目前已经迁移第一部分 `core.blockheader`：
+目前已经迁移第一部分 `core.block-header`：
 
 - `schemas/core/core_blockheader_v1.cue` 保存协议结构；
 - `src/protocols/core-blockheader-v1.ts` 实现原 Go Service 中的 Ed25519 验签逻辑；
