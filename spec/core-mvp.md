@@ -1,129 +1,92 @@
 # Core MVP Specification
 
-Status: **draft / partially implemented**
+Status: draft migration projection
 
-This specification defines the minimum LabourChain Core behavior required to support trusted records, protocol registration, deterministic block packing/verification, genesis, and chain replay. It intentionally excludes Repo, LabourFlow, Board, persistence-engine, and transport semantics.
+This specification projects the existing Core-related behavior from `Ri0n72Y/blockchain-service` into the TypeScript migration. The original Service project remains the factual source for existing protocol semantics.
 
-## 1. Architecture invariants
+## Source
 
-### CORE-ARCH-001 — deterministic protocol behavior
-Status: planned
+Current source material used by this projection:
 
-Core protocol functions that affect record ids, protocol ids, block contents, block hashes/roots, signatures, or chain validity **MUST** be deterministic for the same explicit inputs.
+- `schemas/system/sys_protocol_v1.cue`
+- `schemas/system/sys_record_v1.cue`
+- `schemas/system/sys_entity_v1.cue`
+- `schemas/system/sys_block_v1.cue`
+- `schemas/system/sys_blockheader_v1.cue`
+- `lib/model/types.go`
+- `lib/data/blockHandler.go`
+- `lib/data/recordHandler.go`
+- `cmd/script/main.go`
+- the human-readable protocol documents paired with the CUE schemas in the original Service project
 
-They **MUST NOT** read network state, database state, wall-clock time, environment variables, or mutable global state implicitly. Values such as timestamps, keys, protocol registries, and previous-block identifiers **MUST** be supplied explicitly by the caller/runtime.
+The paired human-readable protocol documents have not all been recovered into this repository yet. Semantics defined there must be migrated before the corresponding implementation is treated as complete.
 
-### CORE-ARCH-002 — storage and transport independence
-Status: planned
+## Migration naming
 
-`@labourchain/core-protocols` **MUST NOT** require MongoDB, Redis, HTTP servers, DSH agents, LLMs, UI frameworks, or object storage in order to validate Core protocol data.
+The current package renames the blockchain primitive namespace from `sys.*` to `core.*`.
 
-Persistence and transport adapters **MAY** call Core, but Core protocol validity **MUST NOT** depend on a particular adapter.
+The current Core migration targets are:
 
-### CORE-ARCH-003 — application-domain isolation
-Status: planned
+- `sys.protocol` → `core.protocol`
+- `sys.record` → `core.record`
+- `sys.entity` → `core.entity`
+- `sys.block` → `core.block`
+- `sys.block-header` → `core.blockheader`
 
-Core **MUST NOT** define repository membership, member resume/profile, labour-record payload semantics, project semantics, or runtime indexes.
+This rename is a migration decision in the new repository. Field meaning and executable behavior come from the original Service source.
 
-A domain protocol **MAY** build on `core.record` and `core.entity` primitives.
+## Protocol
 
-### CORE-ARCH-004 — versioned compatibility
-Status: planned
+### Source shape
 
-A breaking change to deterministic protocol behavior **MUST** create an explicit new protocol version/specification. Migration refactors **MUST NOT** silently change existing v1 compatibility behavior.
-
-### CORE-ARCH-005 — protocol document/schema/spec traceability
-Status: planned
-
-A migrated protocol **SHOULD** maintain a one-to-one semantic document paired with its CUE schema, plus an implementation spec that translates that protocol meaning into executable requirements.
-
-The preferred mapping is:
-
-```text
-docs/protocols/core-record-v1.md
-schemas/core/core_record_v1.cue
-spec/core-record-v1.md
-```
-
-When a paired legacy Service protocol document is known to exist, missing migration of that document is a `source-migration-required` condition and **MUST NOT** be treated as permission to redesign existing semantics.
-
-## 2. Protocol namespace
-
-### CORE-NS-001 — Core protocol ids
-Status: planned
-
-Blockchain primitives in this repository use the `core.*` namespace.
-
-The MVP target set is:
-
-- `core.protocol`
-- `core.record`
-- `core.entity`
-- `core.block`
-- `core.blockheader`
-
-Legacy `sys.repo` and `sys.member` **MUST NOT** be mechanically migrated into the Core namespace.
-
-## 3. `core.protocol`
-
-### CORE-PROTO-001 — descriptor baseline
-Status: planned / legacy-compat
-
-The first migrated `core.protocol` version **MUST** preserve the legacy descriptor information:
+`sys_protocol_v1.cue` defines:
 
 - `protocolId`
 - `version`
+- `contributors`
 - `package`
 - `schema`
-- `contributors`
 - optional `description`
 
-### CORE-PROTO-002 — protocol identity baseline
-Status: planned / legacy-compat
+`lib/model/types.go` contains the corresponding Go `Protocol` model.
 
-Until an explicit versioned change is specified, migration tests **MUST** preserve the legacy protocol-id/hash construction from the Go genesis script:
+### Protocol hash projection
 
-1. canonicalize the CUE schema source using the legacy CUE formatting behavior;
-2. concatenate `package`, `protocolId`, `version`, and canonical schema using the legacy delimiter/order;
-3. apply the legacy double-SHA256 operation;
-4. encode the result as lowercase hexadecimal.
+`cmd/script/main.go` calculates a protocol hash by:
 
-Golden compatibility fixtures **SHOULD** be used so the TypeScript implementation can be compared with legacy Go output.
+1. formatting the CUE source with `format.Source(..., format.Simplify())`;
+2. concatenating `package`, protocol id, version, and formatted schema with `:` separators;
+3. applying SHA-256 twice;
+4. encoding the result as lowercase hexadecimal.
 
-### CORE-PROTO-003 — executable runtime identity
-Status: blocked
+The TypeScript migration should reproduce this behavior with compatibility fixtures before changing it.
 
-Before independent nodes can rely on executable smart-protocol behavior, the on-chain protocol identity **MUST** commit to the exact executable implementation/package identity used for validation/packing.
+### Genesis protocol records
 
-The existing schema does not yet specify how this binding is represented. Implementation **MUST NOT** invent an implicit binding. A follow-up spec/version decision is required.
+The genesis script creates one protocol record for each schema in its source protocol set. Those bootstrap records use the protocol hash itself as the record `id` instead of the ordinary `calcRecordID` path.
 
-### CORE-PROTO-004 — registration as chain state
-Status: planned
+Any migration of this bootstrap behavior must preserve that source distinction until an explicit protocol change is made.
 
-Accepted `core.protocol` records **MUST** be sufficient to reconstruct the protocol registry by replaying the canonical chain from genesis, together with the version-defined bootstrap rule for `core.protocol` itself.
+## Entity
 
-A runtime cache/index **MAY** accelerate this registry but **MUST NOT** be authoritative.
+### Source shape
 
-## 4. `core.entity`
-
-### CORE-ENTITY-001 — identity primitive
-Status: planned / legacy-compat
-
-The first migrated `core.entity` version **MUST** preserve the legacy identity primitive fields required by the existing schema:
+`sys_entity_v1.cue` defines an entity with:
 
 - `publicKey`
 - `contributors`
 - `protocolHash`
 - optional `type`
 
-Core **MUST NOT** assign organization-membership, profile, resume, repository, or project semantics to this primitive.
+`lib/model/types.go` contains the corresponding Go `Entity` model and an additional generic `Data` field in the Go representation.
 
-## 5. `core.record`
+The difference between the CUE shape and Go model should remain visible during migration rather than being silently normalized.
 
-### CORE-REC-001 — record envelope
-Status: planned / legacy-compat
+## Record
 
-The first migrated `core.record` version **MUST** preserve the legacy envelope fields:
+### Source shape
+
+`sys_record_v1.cue` defines:
 
 - `id`
 - `protocol`
@@ -133,206 +96,137 @@ The first migrated `core.record` version **MUST** preserve the legacy envelope f
 - `signature`
 - `data`
 
-### CORE-REC-002 — legacy record-id calculation
-Status: planned / legacy-compat
+`lib/model/types.go` represents this as `RawRecord` plus `Record.ID` and `Record.Signature`.
 
-The migration implementation **MUST** reproduce the legacy Go `calcRecordID` output for compatibility fixtures.
+### Record id projection
 
-The legacy operation is:
+`cmd/script/main.go` implements `calcRecordID` as:
 
-1. serialize `data` using the compatibility serialization contract represented by legacy Go `encoding/json` behavior;
-2. concatenate `protocol`, `protocolHash`, `createdBy`, `createdAt`, and serialized `data` using the legacy delimiter/order;
-3. apply double SHA-256;
+1. JSON-marshal `Data` using Go `encoding/json`;
+2. concatenate `Protocol`, `ProtocolHash`, `CreatedBy`, `CreatedAt`, and the JSON payload with `:` separators;
+3. apply SHA-256 twice;
 4. encode the result as lowercase hexadecimal.
 
-The TypeScript implementation **MUST** use explicit canonicalization/compatibility logic rather than relying on unspecified object-property ordering.
+A TypeScript port must be checked against Go-generated fixtures. JavaScript object ordering must not be assumed to be equivalent without such compatibility evidence.
 
-### CORE-REC-003 — referenced protocol validation
-Status: planned
+### Record signature
 
-An ordinary record **MUST** reference a protocol id/version and `protocolHash` that resolve to an accepted protocol definition under the current replay state.
+The original Service project contains a human-readable protocol document paired with `sys_record_v1.cue` that defines the signing semantics. That document must be migrated into `docs/protocols/core-record-v1.md` before the record-signature implementation is ported.
 
-The record payload **MUST** satisfy the referenced protocol schema/runtime validation rules before the record is accepted for packing.
+The current Core spec does not infer the signing payload from `calcRecordID`, the CUE field list, or adjacent code.
 
-### CORE-REC-004 — trusted record signature
-Status: source-migration-required / legacy-compat
+### Persistence behavior present in the source
 
-An ordinary non-bootstrap record **MUST** carry the creator confirmation signature defined by the legacy Service protocol document paired with `sys_record_v1.cue`.
+`lib/data/recordHandler.go` checks record-id collisions in MongoDB and compares signatures when an id already exists. It also contains an unfinished protocol-record-specific persistence branch.
 
-That signing contract already exists as protocol source material. Before implementation, the paired legacy document **MUST** be recovered/migrated into `docs/protocols/core-record-v1.md`, and its signing semantics **MUST** be translated into a dedicated `spec/core-record-v1.md` with deterministic test vectors.
+The unfinished branch is source evidence of intended protocol-specific handling, but its incomplete code is not sufficient to define additional protocol semantics.
 
-Implementation **MUST NOT** infer or replace the signing payload from the CUE field list, `calcRecordID`, or unrelated Go code while the paired protocol document is still absent from this repository.
+## Block header
 
-This requirement is a source-migration task, not a new protocol-design blocker.
+The detailed projection is maintained in [`core-blockheader-v1.md`](core-blockheader-v1.md).
 
-### CORE-REC-005 — bootstrap exception
-Status: planned
+The source consists of:
 
-Genesis bootstrap records **MAY** use a version-defined bootstrap creator/signature exception when required to create the first trusted state. That exception **MUST** be limited to genesis construction/verification and **MUST NOT** be accepted for ordinary post-genesis records.
+- `sys_blockheader_v1.cue` for the field shape;
+- `lib/model/types.go` for the Go model;
+- `lib/data/blockHandler.go::VerifyBlockHeader` for runtime verification;
+- `cmd/script/main.go` for genesis header creation/signing.
 
-## 6. `core.blockheader` v1
+The runtime verifier and genesis signer currently disagree on the exact signing payload. This is recorded under **Source inconsistencies** below.
 
-The human-readable protocol document is [`../docs/protocols/core-blockheader-v1.md`](../docs/protocols/core-blockheader-v1.md).
-The detailed implementation compatibility contract is defined in [`core-blockheader-v1.md`](core-blockheader-v1.md).
+## Block
 
-### CORE-BH-001 — legacy header shape
-Status: implemented / legacy-compat
+### Source shape
 
-The migrated v1 header contains:
+`sys_block_v1.cue` defines a block as:
 
-- `hash`
-- `previousHash`
-- `createdAt`
-- `packer`
-- `signature`
+```text
+header: BlockHeader
+records: ordered list of Record
+```
 
-### CORE-BH-002 — signed payload
-Status: implemented / legacy-compat
+`lib/model/types.go` contains the corresponding Go model.
 
-The Ed25519 signature payload **MUST** be the UTF-8 JSON serialization of exactly these fields in this order:
+### Merkle projection
 
-1. `hash`
-2. `previousHash`
-3. `createdAt`
-4. `packer`
+`cmd/script/main.go` implements the records root with this recursive behavior:
 
-`signature` **MUST NOT** be included in its own signed payload.
-
-### CORE-BH-003 — key/signature encoding
-Status: implemented / legacy-compat
-
-The current migrated verifier **MUST** interpret `packer` and `signature` as hexadecimal values, matching the legacy Go implementation.
-
-The CUE/Go encoding mismatch is a known compatibility issue and **MUST NOT** be silently corrected within v1 migration work.
-
-## 7. `core.block`
-
-### CORE-BLOCK-001 — ordered record set
-Status: planned / legacy-compat
-
-A block **MUST** contain a header and an ordered list of records.
-
-Record order **MUST** be preserved because the legacy Merkle algorithm and any sequential replay semantics depend on it.
-
-### CORE-BLOCK-002 — record verification before packing
-Status: planned
-
-A packer **MUST NOT** include a record that fails its Core envelope/id/protocol/signature checks or the referenced protocol's validation rules.
-
-Full trusted packing depends on migrating the existing ordinary-record signature contract into the Core record protocol document/spec and implementing it.
-
-### CORE-BLOCK-003 — legacy Merkle root
-Status: planned / legacy-compat
-
-For the migrated v1 behavior, the records root **MUST** reproduce the legacy recursive algorithm:
-
-- zero records -> empty string;
-- one record id -> that id;
-- pairs -> `DoubleSHA256(left + right)`;
-- odd final id at a level -> duplicate the final id and hash the pair;
+- no ids → empty string;
+- one id → that id;
+- each pair → `DoubleSHA256(left + right)`;
+- an unpaired final id is duplicated and hashed with itself;
 - repeat until one value remains.
 
-Compatibility fixtures **MUST** cover zero, one, even, and odd record counts.
+The genesis script stores this result in `BlockHeader.Hash`.
 
-### CORE-BLOCK-004 — legacy `hash` meaning
-Status: planned / legacy-compat
+Compatibility tests for the port should cover empty, single, even, and odd record counts.
 
-For v1 migration, `core.blockheader.hash` **MUST** continue to carry the value produced by the legacy records-Merkle-root calculation.
+## Genesis
 
-Any future split between `recordsRoot` and a full block identifier **MUST** be introduced through an explicit new protocol version/spec.
+`cmd/script/main.go` is the current executable source for genesis construction.
 
-### CORE-BLOCK-005 — chain linkage
-Status: planned
+Its current flow is:
 
-For non-genesis blocks, `previousHash` **MUST** match the version-defined identifier of the immediately preceding accepted block/header.
+1. load root-member and genesis-node Ed25519 keys from configured paths;
+2. load the configured CUE package;
+3. load seven source schemas: protocol, record, entity, member, repo, block, and block-header;
+4. calculate protocol hashes;
+5. create bootstrap protocol records;
+6. create the root member record;
+7. create the genesis repository record;
+8. collect record ids and calculate the Merkle root;
+9. create a block header with `previousHash = "0"` and the genesis repository public key as `packer`;
+10. sign the header;
+11. validate the final block with CUE and write `genesis_block.json`.
 
-The exact v1 identifier semantics **MUST** remain compatible with the legacy `hash` meaning until versioned otherwise.
+The first migration should reproduce and test source behavior before generalizing the genesis API.
 
-### CORE-BLOCK-006 — packer signature
-Status: planned
+## Source inconsistencies found during migration
 
-A block **MUST** be rejected when `core.blockheader` signature verification fails.
+These are disagreements or defects present in the original Service material. They are facts about the source state, not new protocol decisions.
 
-Authority/authorization policy for which packer key is permitted belongs to the node/Repo authorization composition and **MUST NOT** be silently hard-coded into the cryptographic header verifier.
+### Block-header key encoding
 
-## 8. Genesis
+`sys_blockheader_v1.cue` constrains `packer` with a Base64-like character set, while `VerifyBlockHeader` decodes `packer` with `hex.DecodeString`.
 
-### CORE-GEN-001 — genesis sentinel
-Status: planned / legacy-compat
+The current TypeScript verifier preserves the Go runtime hex behavior while the migrated CUE is kept unchanged.
 
-The first migrated genesis behavior **MUST** use `previousHash = "0"`, matching the legacy Go script.
+### Genesis signature payload vs runtime verifier
 
-### CORE-GEN-002 — Core protocol bootstrap
-Status: planned
+The genesis script signs `json.Marshal(header)` while `header.Signature` is still an empty string. The Go `BlockHeader` model therefore includes `"signature":""` in the bytes being signed.
 
-Genesis construction **MUST** be able to register the Core protocols required to interpret the initial chain state.
+`VerifyBlockHeader` constructs a separate anonymous struct containing only `hash`, `previousHash`, `createdAt`, and `packer`, so it verifies a different byte sequence.
 
-The bootstrap rule for `core.protocol` self-description **MUST** be deterministic and explicitly tested.
+The current `core.blockheader` implementation ports the runtime verifier. Genesis signing must not be claimed compatible until this source inconsistency is resolved deliberately.
 
-### CORE-GEN-003 — external domain bootstrap contributions
-Status: planned
+### Genesis repository protocol hash
 
-The generic Core genesis builder **MUST** accept explicit bootstrap records contributed by other loaded domains (for example the initial Repo identity/authority record) without importing those domain packages directly.
+The genesis script builds the repository as a Go `Entity` without assigning `ProtocolHash` before validating it as `#Repository`.
 
-Core genesis **MUST NOT** hard-code Repo, LabourFlow, or Board semantics.
+`sys_repo_v1.cue` extends `#Entity`, and `#Entity` requires `protocolHash: string`.
 
-### CORE-GEN-004 — deterministic inputs
-Status: planned
+The migration must preserve this as a known source defect until the genesis slice decides how to handle it.
 
-Genesis creation **MUST** receive timestamps, keys, protocol descriptors, and contributed bootstrap records as explicit inputs.
+### Genesis record order
 
-Tests **MUST** be able to reproduce identical genesis output from identical inputs.
+The source genesis protocol set is stored in a Go map and iterated directly when protocol records are appended. Go map iteration order is not stable, while the resulting ordered record ids feed the Merkle calculation.
 
-## 9. Replay and chain validation
+The current source therefore does not establish a reproducible protocol-record order for genesis. A deterministic ordering rule would be a protocol change unless corresponding source documentation already defines one.
 
-### CORE-CHAIN-001 — append-only validation
-Status: planned
+## Implementation scope for the current feature
 
-Given genesis plus an ordered sequence of blocks, Core **MUST** be able to validate the sequence without consulting an external authoritative database.
+The current executable slice ports `VerifyBlockHeader` and its paired block-header schema.
 
-### CORE-CHAIN-002 — reconstructable protocol registry
-Status: planned
+The feature should add further protocol code only after its source document/CUE/Go behavior has been inspected and projected into the relevant spec.
 
-Replay **MUST** reconstruct protocol-registration state from accepted chain facts and deterministic bootstrap rules.
+Testing should focus on source-backed behavior and concrete regressions. Coverage-oriented tests without protocol value are unnecessary.
 
-### CORE-CHAIN-003 — disposable indexes
-Status: planned
+## Verification
 
-Loss of MongoDB, Redis, or other derived indexes **MUST NOT** cause loss of canonical chain truth. Such indexes **MUST** be rebuildable from chain data and protocol implementations.
-
-## 10. Verification gates
-
-### CORE-TEST-001 — project check
-Status: implemented for current slice
-
-Every completed implementation slice **MUST** pass:
+The repository check command is:
 
 ```bash
 pnpm check
 ```
 
-which includes typecheck, tests, and build.
-
-### CORE-TEST-002 — legacy compatibility fixtures
-Status: planned
-
-Where behavior is migrated from Go or legacy protocol documents, the corresponding spec slice **SHOULD** include golden input/output fixtures generated or independently checked against the legacy implementation/source contract.
-
-### CORE-TEST-003 — spec traceability
-Status: planned
-
-Tests for Core protocol behavior **SHOULD** reference the relevant requirement ids in test names or comments so implementation coverage can be traced back to this specification.
-
-## 11. Explicitly deferred from this repository
-
-The following are outside this Core protocol MVP spec:
-
-- Repo membership/authorization protocol design;
-- LabourFlow record payload/profile schemas;
-- Board/project schemas and projections;
-- HTTP endpoint design;
-- persistence adapter implementation;
-- MongoDB/Redis ORM/indexing;
-- object-storage asset content;
-- private-record disclosure/zero-knowledge verification;
-- multi-authority consensus and authority rotation.
+It runs typecheck, tests, and build.
