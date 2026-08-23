@@ -1,71 +1,108 @@
-# Migration baseline
+# Migration notes
 
-## Source
+## Source authority
 
-Core is being migrated incrementally from `Ri0n72Y/blockchain-service`.
+Existing protocol semantics come from `Ri0n72Y/blockchain-service`.
 
-The legacy repository contains two things that must be separated during migration:
+The migration reads the original protocol documents, CUE schemas, Go models, handlers, and scripts together. This repository's docs/spec organize that material for the TypeScript port.
 
-1. protocol schemas under `schemas/system`;
-2. protocol behavior embedded in Go scripts/handlers such as record-id calculation, protocol hashing, genesis construction, Merkle packing, and block-header verification.
+Current GitHub-visible source paths include:
 
-The migration rule is to recover existing semantics first, then make protocol changes only through an explicit version/spec decision.
+```text
+schemas/system/*.cue
+lib/model/types.go
+lib/data/blockHandler.go
+lib/data/recordHandler.go
+cmd/script/main.go
+```
+
+The original Service project also has human-readable protocol documents paired with CUE definitions. Those documents must be carried over with their protocol slices. Some of them are not currently present in the GitHub `main` tree visible to this migration environment, so their semantics are not reconstructed from adjacent code.
 
 ## Namespace migration
 
-The blockchain foundation now uses the `core` namespace.
+The current package renames the blockchain primitives as follows:
 
-Current mapping target:
+| Source id | Migrated id |
+| --- | --- |
+| `sys.protocol` | `core.protocol` |
+| `sys.record` | `core.record` |
+| `sys.entity` | `core.entity` |
+| `sys.block` | `core.block` |
+| `sys.block-header` | `core.blockheader` |
 
-| Legacy | Core target | Notes |
-| --- | --- | --- |
-| `sys.protocol` | `core.protocol` | Core primitive |
-| `sys.record` | `core.record` | Core primitive |
-| `sys.entity` | `core.entity` | Core identity primitive |
-| `sys.block` | `core.block` | Core primitive |
-| `sys.block-header` | `core.blockheader` | Core primitive |
-| `sys.repo` | Repo domain | Do not mechanically rename into Core |
-| `sys.member` | Split by responsibility | Core identity primitive + Repo membership + LabourFlow profile |
+This naming table is a decision of the new package layout. The underlying field and algorithm behavior is projected from the original source.
 
-## Existing Go behavior to recover
+## Source behavior already identified
 
-The legacy genesis script currently defines these behaviors:
+`cmd/script/main.go` currently contains:
 
-- CUE schema loading/validation;
-- double-SHA256 helper;
-- deterministic legacy record-id construction;
-- protocol-id/hash construction from package, id, version, and canonicalized CUE source;
-- recursive Merkle-root construction from ordered record ids, duplicating the final id when a level has odd cardinality;
-- bootstrap protocol records;
-- bootstrap Root/member/repository records;
+- double SHA-256;
+- record-id construction;
+- protocol-hash construction;
+- CUE validation during genesis generation;
+- recursive Merkle-root construction;
+- creation of protocol bootstrap records;
+- creation of root member and genesis repository records;
 - genesis `previousHash = "0"`;
-- genesis block-header signing with Ed25519.
+- genesis BlockHeader signing.
 
-The legacy data handlers additionally contain block-header verification and protocol-specific persistence branching that should be moved out of generic storage code.
+`lib/data/blockHandler.go` contains runtime BlockHeader signature verification.
 
-## First implemented slice: `core.blockheader` v1
+`lib/data/recordHandler.go` contains Mongo record collision handling and an unfinished protocol-record-specific persistence branch.
 
-The current feature branch migrates the former `sys_blockheader_v1` behavior as `core_blockheader_v1` / `core.blockheader`.
+## Current migrated slice
 
-Preserved compatibility behavior:
+`core.blockheader` ports the executable behavior of `VerifyBlockHeader`:
 
-1. the signed payload contains `hash`, `previousHash`, `createdAt`, and `packer` in that order;
-2. `signature` is excluded from the signed payload;
-3. `packer` and `signature` are interpreted as hexadecimal values;
-4. Ed25519 verification must reject mutation of any signed field.
+- hexadecimal decoding of `packer`;
+- Ed25519 public-key-size validation;
+- hexadecimal decoding of `signature`;
+- JSON serialization of `hash`, `previousHash`, `createdAt`, and `packer` in the Go struct field order;
+- Ed25519 verification of that payload.
 
-Known inconsistency: the migrated CUE constraint for `packer` still resembles a Base64 character set, while the legacy Go verifier uses hex decoding. This remains a documented compatibility issue rather than an implicit migration fix.
+The CUE shape is migrated separately from `sys_blockheader_v1.cue`.
 
-See [`../spec/core-blockheader-v1.md`](../spec/core-blockheader-v1.md).
+## Source inconsistencies found by the review
 
-## Next migration slices
+The following issues already exist in `blockchain-service`. The migration records them before deciding any change.
 
-The intended sequence is:
+### Packer encoding
 
-1. `core.record`: recover record envelope, legacy id calculation, validation boundary, and define the missing trusted-record signature contract before implementing it;
-2. `core.protocol`: recover descriptor/hash behavior and settle executable-runtime identity before independent-node verification relies on it;
-3. `core.block`: recover Merkle packing and complete block verification;
-4. genesis: refactor the hard-coded script into a deterministic Core capability with externally supplied domain bootstrap records;
-5. protocol registration/replay: ensure protocol registry state is derivable from the accepted chain.
+`sys_blockheader_v1.cue` uses a Base64-like character constraint for `packer`. `VerifyBlockHeader` uses `hex.DecodeString`.
 
-Repo, LabourFlow, and Board protocol migrations should proceed in their own repositories/specs and consume Core primitives rather than re-entering this package.
+The first TypeScript slice follows the executable verifier for verification while preserving the migrated CUE text.
+
+### Genesis BlockHeader signing payload
+
+The genesis script builds a `model.BlockHeader`, marshals that full struct while `Signature` is still `""`, and signs the resulting JSON.
+
+`VerifyBlockHeader` marshals an anonymous struct containing only:
+
+```text
+hash
+previousHash
+createdAt
+packer
+```
+
+The two source paths therefore use different signing bytes. The current TypeScript block-header verifier follows `VerifyBlockHeader`; genesis signing compatibility remains unresolved until the genesis slice is reviewed explicitly.
+
+### Genesis repository `protocolHash`
+
+The genesis script creates the repository entity without assigning `ProtocolHash` before validating it as `#Repository`.
+
+`sys_repo_v1.cue` extends `#Entity`, and `#Entity` requires `protocolHash`.
+
+This is recorded as a source defect. The migration should not hide it through an unrelated refactor.
+
+### Genesis protocol record order
+
+The genesis script stores its schema definitions in a Go map and appends protocol records by ranging over that map. Those record ids are then used to build the Merkle root.
+
+Go map iteration order is not stable, so the current source code does not provide a stable genesis protocol-record order by itself.
+
+If the paired original protocol documentation defines an ordering rule, that document should decide the migration. Otherwise a new ordering rule needs to be treated as an explicit protocol change.
+
+## Next source review
+
+The next useful slice is `core.record` after the original record protocol document paired with `sys_record_v1.cue` is recovered. That source should be reviewed together with `calcRecordID`, the Go record model, and persistence behavior before writing the TypeScript record implementation.
