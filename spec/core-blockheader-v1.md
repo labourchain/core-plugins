@@ -1,14 +1,20 @@
 # `core.blockheader` v1 Specification
 
-Status: **implemented / legacy-compat**
+Status: implemented compatibility projection
 
-This specification freezes the currently migrated block-header verification behavior from the legacy Go service. It is a compatibility contract, not a claim that every legacy representation choice is the desired final protocol design.
+## Source
 
-## Schema
+This specification projects from:
 
-### CORE-BH-001 — fields
+- `Ri0n72Y/blockchain-service/schemas/system/sys_blockheader_v1.cue`
+- `Ri0n72Y/blockchain-service/lib/model/types.go`
+- `Ri0n72Y/blockchain-service/lib/data/blockHandler.go::VerifyBlockHeader`
 
-A v1 block header contains exactly the protocol fields:
+Genesis signing in `cmd/script/main.go` is related source material but currently disagrees with `VerifyBlockHeader` on the signed byte sequence. That discrepancy is documented in [`core-mvp.md`](core-mvp.md) and [`../docs/migration.md`](../docs/migration.md).
+
+## Schema projection
+
+The migrated CUE schema declares these fields:
 
 ```text
 hash
@@ -18,61 +24,42 @@ packer
 signature
 ```
 
-The migrated CUE schema remains the structural source for these fields.
+The TypeScript interface keeps the same field names.
 
-## Signature payload
+## Runtime verification projection
 
-### CORE-BH-002 — canonical payload
+`VerifyBlockHeader` performs the following operations, and the TypeScript verifier should reproduce them:
 
-The signature payload **MUST** be the UTF-8 bytes of JSON with exactly the following fields in this insertion order:
+1. decode `packer` with hexadecimal decoding;
+2. require the decoded public key to be 32 bytes, matching Ed25519 public-key size;
+3. decode `signature` with hexadecimal decoding;
+4. build a JSON object with `hash`, `previousHash`, `createdAt`, and `packer` in that struct field order;
+5. marshal that object as JSON;
+6. verify the Ed25519 signature over those bytes;
+7. return failure when decoding, key-size validation, or signature verification fails.
+
+The expected JSON shape produced by the source verifier is:
 
 ```json
 {"hash":"...","previousHash":"...","createdAt":"...","packer":"..."}
 ```
 
-`signature` **MUST NOT** be included in the payload.
+`signature` is absent from the runtime verifier's signed object.
 
-No whitespace, pretty-printing, additional field, or reordered field **MAY** be introduced by the v1 canonicalizer.
+## Source discrepancy: CUE key encoding
 
-### CORE-BH-003 — Ed25519 verification
+The source CUE constraint for `packer` accepts a Base64-like character set, while the source Go verifier calls `hex.DecodeString`.
 
-`packer` **MUST** be decoded as a hexadecimal raw Ed25519 public key.
+The current migration keeps the CUE text and ports the executable verifier's hexadecimal behavior. This is a documented source discrepancy and should not be hidden by changing one side during the migration slice.
 
-The decoded public key **MUST** contain exactly 32 bytes.
+## Current tests
 
-`signature` **MUST** be decoded as hexadecimal bytes and verified as an Ed25519 signature over the `CORE-BH-002` payload.
+The compatibility tests cover:
 
-Verification **MUST** fail if any signed field is changed without re-signing.
+- the JSON field order used by the Go verifier;
+- successful Ed25519 verification;
+- rejection after mutating a signed field;
+- rejection of a non-hex packer value by the executable verifier.
 
-## Compatibility issue
-
-### CORE-BH-004 — CUE encoding mismatch
-
-The migrated CUE constraint for `packer` resembles a Base64-compatible character set, while the legacy Go verifier decodes the value using hexadecimal decoding.
-
-The executable v1 verifier **MUST** preserve the legacy hexadecimal interpretation.
-
-The schema constraint **MUST NOT** be silently changed as part of migration. Resolving the mismatch requires an explicit version/spec decision.
-
-## Out of scope for this protocol slice
-
-This verifier does not decide:
-
-- whether `hash` is the correct long-term full block identifier;
-- whether the packer is authorized by a repository/authority policy;
-- whether the block's record set actually derives the supplied `hash` value;
-- whether `previousHash` references the canonical preceding block;
-- how genesis is authorized.
-
-Those checks belong to `core.block`, chain/genesis logic, or an authorization composition and are specified separately.
-
-## Acceptance tests
-
-The implementation **MUST** cover at least:
-
-1. `CORE-BH-002`: exact canonical JSON field order and representation;
-2. `CORE-BH-003`: valid Ed25519 signature succeeds;
-3. `CORE-BH-003`: mutation of a signed field fails;
-4. `CORE-BH-004`: non-hex packer input is rejected by the executable verifier.
-
-The current implementation is `src/protocols/core-blockheader-v1.ts` and the compatibility tests are `tests/core-blockheader-v1.test.ts`.
+Implementation: `src/protocols/core-blockheader-v1.ts`  
+Tests: `tests/core-blockheader-v1.test.ts`
