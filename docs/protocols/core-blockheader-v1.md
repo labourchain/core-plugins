@@ -1,4 +1,4 @@
-# `core.blockheader` v1
+# `core.block-header` v1
 
 Paired schema: [`../../schemas/core/core_blockheader_v1.cue`](../../schemas/core/core_blockheader_v1.cue)  
 Implementation spec: [`../../spec/core-blockheader-v1.md`](../../spec/core-blockheader-v1.md)
@@ -11,6 +11,8 @@ This document is migrated from the block-header material in `Ri0n72Y/blockchain-
 - `lib/model/types.go`
 - `lib/data/blockHandler.go::VerifyBlockHeader`
 - `cmd/script/main.go` for the related genesis signing path
+
+The original protocol id/version in the source genesis set is `sys.block-header:0.1.0`. The migrated protocol id/version is `core.block-header:0.1.0`.
 
 ## Protocol structure
 
