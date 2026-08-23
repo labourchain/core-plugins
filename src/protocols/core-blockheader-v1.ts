@@ -10,9 +10,9 @@ export interface CoreBlockHeaderV1 {
 }
 
 /**
- * CORE-BH-002: keep this order stable. It mirrors the anonymous Go struct
- * previously used by VerifyBlockHeader before json.Marshal + Ed25519
- * verification. See spec/core-blockheader-v1.md.
+ * Keep this order stable. It mirrors the anonymous Go struct used by
+ * VerifyBlockHeader before json.Marshal + Ed25519 verification.
+ * See spec/core-blockheader-v1.md.
  */
 export function canonicalBlockHeaderPayloadV1(
   header: CoreBlockHeaderV1,
@@ -36,13 +36,12 @@ function decodeHex(value: string, label: string): Buffer {
 }
 
 /**
- * CORE-BH-003/004: verify core_blockheader_v1 with the legacy Go behavior.
- * Packer and signature are interpreted as hex-encoded Ed25519 values, and the
- * signature covers hash/previousHash/createdAt/packer.
+ * Verify core_blockheader_v1 with the behavior implemented by the original Go
+ * VerifyBlockHeader: packer and signature are hex-encoded Ed25519 values, and
+ * verification covers hash/previousHash/createdAt/packer.
  *
- * The CUE/runtime encoding mismatch is documented in docs/migration.md and
- * spec/core-blockheader-v1.md. It must be resolved by an explicit versioned
- * protocol decision rather than an incidental migration change.
+ * Source discrepancies are documented in docs/migration.md and
+ * spec/core-blockheader-v1.md.
  */
 export function verifyBlockHeaderV1(header: CoreBlockHeaderV1): void {
   const publicKey = decodeHex(header.packer, "public key");
