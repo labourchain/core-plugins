@@ -1,35 +1,69 @@
-# LabourChain Core Protocols
+# LabourChain Core Plugins
 
 [中文](README.md)
 
-`@labourchain/core-protocols` is the core blockchain protocol project for LabourChain.
+`@labourchain/core-plugins` is LabourChain's core chain-plugin project.
 
-It organizes and implements the basic rules for trusted records and block confirmation: how a Record describes and confirms a fact, how a Protocol declares records that can be interpreted, how a Block confirms and stores a batch of records in a continuous public history, and how the chain starts from its unique Genesis.
+It defines and implements the chain-level execution rules at the foundation of LabourChain: how Plugins exist as immutable, versioned on-chain packages, how Records describe and confirm facts, how Entities provide public-key identity, how Blocks confirm ordered batches of Records into a continuous public history, and how the chain starts from its unique Genesis.
 
-The historical source for existing protocol behavior is [`Ri0n72Y/blockchain-service`](https://github.com/Ri0n72Y/blockchain-service). The current Core model is being reorganized for the present LabourChain architecture. Development is docs-first and spec-driven: establish source facts and current design first, project them into implementation specifications, then implement the TypeScript/Cordis runtime.
+The original [`Ri0n72Y/blockchain-service`](https://github.com/Ri0n72Y/blockchain-service) is retained only as the historical factual source for legacy protocol behavior. Current requirements and architecture live in `docs/`; implementation specifications under `spec/` are projections of reviewed docs.
 
 ## Current model
 
-LabourChain contains two distinct relation structures:
+A LabourChain **Plugin** is an immutable on-chain package containing schema/public types and deterministic executable functions. Its capability is comparable to a Smart Contract in Ethereum terminology, while its engineering model is closer to a normal package/plugin: it is published under a name and version, an existing release is not mutated in place, and changes are introduced through later versions or patch facts.
 
-- **Core Block Chain** — the node's confirmation and storage history for Records;
-- **Labour / Asset DAG** — labour dependencies, inherited outcomes, and upstream/downstream relations between Records, closer to a Git commit DAG.
+The current Core plugin set is:
 
-Blocks provide confirmation. Records carry facts. There is no required one-to-one mapping between the two structures.
+```text
+core.plugin
+core.record
+core.entity
+core.block
+```
 
-Genesis is the single prior exception of the chain. It keeps a block-like shape and exposes its entries in a Record-like form to establish the initial protocol state. From the first ordinary Block onward, Record, Protocol, and Block processing follows the strict non-genesis rules.
+`BlockHeader` is a public type owned by `core.block`; it is not an independent plugin.
 
-## Documentation
+The executable object carried by the chain is the built **artifact**, not a source repository that every runner must clone and build. A runner fetches the artifact, verifies its PluginHash, and loads the runtime code directly. Source files, package-manager lockfiles, build configuration, and commit history belong to Repository/Asset provenance rather than the runtime Plugin payload.
 
-The current phase is documentation-first. See [`docs/`](docs/README.md):
+Ordinary Plugin releases are issued by a Repository. The release Record uses the Repository's Entity public key as `createdBy`; from that public key the Repository can be resolved, and its Asset/Labour Record graph can be followed to reconstruct source, build inputs, commits/assets, and contribution history. Initial Core plugins in Genesis are the single bootstrap exception and do not require a pre-existing issuing Repository.
 
-- [`docs/source-baseline.md`](docs/source-baseline.md) — facts directly supported by the original `blockchain-service`;
-- [`docs/architecture.md`](docs/architecture.md) — current LabourChain/Core architecture;
-- [`docs/genesis.md`](docs/genesis.md) — the Genesis singularity and the boundary of ordinary protocol execution;
-- [`docs/ordering.md`](docs/ordering.md) — ordering of Protocols, Blocks, and business Record DAGs;
-- [`docs/authority-node.md`](docs/authority-node.md) — minimal authority-node runtime model;
-- [`docs/migration.md`](docs/migration.md) — migration principles and follow-up work.
+## Two orthogonal structures
+
+LabourChain contains:
+
+- **Core Block Chain** — batch confirmation and continuous storage history for Records;
+- **Labour / Asset DAG** — business and contribution relationships between Records, Assets, source, builds, and derived outcomes, closer to a Git commit DAG.
+
+Blocks provide confirmation. Records carry facts. Labour / Asset DAG topology does not participate in generic Core Block validity.
+
+Genesis is the single prior exception of the chain. It directly establishes the initial Plugin state. From the first ordinary Block onward, Plugin, Record, Entity, and Block processing follows strict non-Genesis rules.
+
+## Identity, digest, and Record confirmation
+
+Only Entity key material and Entity-public-key references use Base58, fixed to base58btc / the Bitcoin alphabet.
+
+```text
+Entity public key -> Base58, may appear on chain
+Entity secret key -> Base58, local only, never on chain
+```
+
+Signatures are not identities and are not Base58. RecordId, PluginHash, RecordsRoot, BlockId, and other DoubleSHA256-derived values are digests; the current wire representation is lowercase hexadecimal.
+
+An ordinary `core.record@0.1.0` first derives RecordId from RawRecord, then uses the `createdBy` Entity key to sign a domain-separated RecordId payload with Ed25519. The signature itself is lowercase hexadecimal. This keeps fact-content identity separate from author/issuer confirmation without introducing a second serialization rule for `data`.
+
+## Documentation and specifications
+
+Current requirements and architecture are maintained under [`docs/`](docs/README.md):
+
+- [`docs/source-baseline.md`](docs/source-baseline.md) — historical facts directly supported by the original `blockchain-service`;
+- [`docs/architecture.md`](docs/architecture.md) — current LabourChain/Core requirements and architecture;
+- [`docs/plugin.md`](docs/plugin.md) — Plugin packages, artifacts, release identity, dependency locking, and provenance;
+- [`docs/block.md`](docs/block.md) — `core.block`, BlockHeader, Merkle commitment, signing, BlockId, and validation;
+- [`docs/genesis.md`](docs/genesis.md) — the Genesis singularity and initial Plugin set;
+- [`docs/ordering.md`](docs/ordering.md) — separation of Plugin activation, Block confirmation, and business relation order.
+
+Implementation projections are maintained under [`spec/`](spec/README.md).
 
 ## Project stage
 
-This branch establishes the protocol documentation foundation first. Development specifications under `spec/` will be produced after these documents are reviewed and stabilized, followed by the TypeScript/Cordis implementation.
+The Core Foundation requirements, architecture, and implementation specifications are now defined, with no known design blocker remaining. The current PR is limited to final docs/spec consistency review; once that passes, development moves into concrete Core Plugin implementation rather than expanding the foundation design further.
