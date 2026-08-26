@@ -96,6 +96,8 @@ description?
 
 `protocolId` 允许字母数字以及 `._-@/\\?`，`version` 使用三段语义版本字符串。
 
+这里的 `package` 是原始 CUE/schema package namespace；Genesis 中 system protocols 使用 `system`。它不是 npm/package runtime identity。
+
 ### `sys.record`
 
 `sys_record_v1.cue` 定义：
@@ -117,6 +119,8 @@ data
 ```
 
 CUE 注释把 `createdBy` 描述为 Member PublicKey。
+
+`signature` 在 CUE 中只被约束为 `string`；schema 本身没有给出签名算法或 signing payload。
 
 ### `sys.entity`
 
@@ -205,6 +209,18 @@ JSON(Data)
 Genesis 中普通 root member / repository record 使用这个路径计算 ID。
 
 Genesis 中 Protocol 声明 record 是例外：其 `Record.ID` 直接使用被声明 Protocol 的 protocol hash。
+
+## Source Fact：普通 Record 签名语义未实现
+
+当前可访问的旧仓库源码不能建立普通 Record 的 signing contract：
+
+- `sys_record_v1.cue` 只声明 `signature: string`；
+- `lib/model/types.go` 只把 `Signature` 作为 Record 字段保存；
+- `lib/data/recordHandler.go` 在碰撞检查时比较两个 Record 的 signature 是否相同，但没有生成或验证普通 Record signature；
+- `cmd/script/main.go` 构造 Genesis Records 时没有为这些 Records 填写普通 signature；
+- 该脚本中的 `signData()` 实际只用于 Genesis BlockHeader。
+
+因此从当前仓库能够确认的是：旧模型预留了 Record signature 字段，但**不能确认普通 Record 应签哪些 bytes**。
 
 ## Source Fact：Protocol hash
 
@@ -320,8 +336,10 @@ Genesis script 创建 `genesisRepo` 时没有设置 `ProtocolHash`，随后把�
 
 这些现象需要结合 Genesis 的特殊地位重新解释，不能自动视为普通协议缺陷，也不能在迁移中静默修复。
 
-## Source Fact：当前 GitHub main 缺失的材料
+## Source Gap：未恢复的人类可读协议材料
 
-当前可访问的 `Ri0n72Y/blockchain-service/main` 只有 `cmd/`、`lib/`、`schemas/` 等代码目录，没有看到用户所述与 CUE 一一对应的人类可读协议文档。
+此前迁移上下文提到原始 Service 曾有与 CUE 配套的人类可读协议材料，但当前可访问的 `Ri0n72Y/blockchain-service` 只有两个 commit，当前树及可见 commit 内容都没有定位到这些文档；公开网页索引中也没有恢复出 `sys.record` 的签名说明。
 
-这些原始协议文档仍属于迁移事实来源的一部分。在相关协议进入实现前，应恢复对应文档，尤其是 `sys.record` 的签名/确认语义，不能只根据当前可见 CUE 和 Go 代码自行补全。
+因此不能把“存在一份能够规定普通 Record signing payload 的旧文档”继续当作已验证 Source Fact。
+
+如果未来恢复出额外历史材料，应把它作为新增 Source Fact 记录并与当前设计比较；在此之前，普通 Record 的签名语义属于历史 source gap。当前 Core 是否以及如何定义签名，由 `docs/architecture.md` 的 Current Design 决定。
