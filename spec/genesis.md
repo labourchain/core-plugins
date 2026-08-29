@@ -1,38 +1,37 @@
 # Genesis Specification
 
-Status: defined for current bootstrap package, canonical Genesis identity, and initial Plugin state.
+Status: migration baseline only. Genesis remains a Block containing Records; exact current bootstrap identity/signature rules require later `core.record` / `core.block` review against source.
 
 ## Source
-
-Current design source:
-
-- `docs/genesis.md`
-- `docs/plugin.md`
-- `docs/architecture.md`
-- `docs/block.md`
 
 Historical source:
 
 - `Ri0n72Y/blockchain-service/cmd/script/main.go`
 - `Ri0n72Y/blockchain-service/lib/model/types.go`
-- the original CUE schemas referenced by the historical Genesis script
+- historical system CUE schemas referenced by the Genesis script
 
-## Purpose
+Current design source:
 
-Genesis establishes the initial chain identity and active Plugin state `S0`.
+- `docs/source-baseline.md`
+- `docs/architecture.md`
+- `docs/genesis.md`
+- `docs/plugin.md`
 
-Genesis is the unique bootstrap singularity. It is recognized as the configured start of a chain but is not validated through ordinary post-Genesis Plugin-release Record / Block rules.
+## Required structural invariant
 
-## Current package model
-
-Genesis is a package containing:
+Genesis must preserve the source-level container model:
 
 ```text
-canonical Genesis manifest
-full initial Plugin artifacts
+Genesis = Block
+Block.records[] = Record[]
+Plugin bootstrap data = Record.data = Plugin
 ```
 
-The initial Core Plugin set is:
+There is no independent `GenesisManifest` / `S0 Plugin artifact set` chain-data model in the current migration.
+
+## Initial Plugin Records
+
+Initial Core Plugin data is carried in Records interpreted by `core.plugin`:
 
 ```text
 core.plugin
@@ -41,263 +40,57 @@ core.entity
 core.block
 ```
 
-A concrete chain may include additional domain Plugin artifacts that must be active from Block 1.
+`BlockHeader` belongs to `core.block`; there is no independent `core.block-header` Plugin.
 
-`BlockHeader` is owned by `core.block`; Genesis must not include a separate `core.block-header` Plugin.
+Each Plugin value must satisfy `spec/core-plugin.md`, and the corresponding executable artifact must be verifiable by `core.plugin.verifyArtifact()` semantics before the runner executes it.
 
-## Genesis entries are not ordinary Records
+Artifact acquisition/distribution is explicit runner input and is not a second Genesis chain-data format.
 
-Initial Plugin artifacts are not wrapped in ordinary release Records.
+## Deferred bootstrap details
 
-Genesis does not require for each initial Plugin:
+The historical source contains Genesis-specific behaviors that are not resolved by this `core.plugin` review:
 
-```text
-createdBy
-createdAt
-signature
-issuing Repository
-ordinary RecordId
-```
+- Protocol Record ID equals historical ProtocolHash instead of ordinary `calcRecordID(rawRecord)`;
+- bootstrap Protocol Records use `createdBy = "Root"`;
+- bootstrap Protocol Records do not use the later ordinary Record-signature contract;
+- Genesis Header uses `previousHash = "0"`;
+- Root Member and Genesis Repository are created as Records;
+- Genesis Repository public key is used as packer;
+- historical Header signing behavior differs from the current unreviewed `core.block` design;
+- historical Service has a separate `sys.block-header` Protocol even though current architecture intends `BlockHeader` to be a type owned by `core.block`.
 
-Genesis itself is the prior trust anchor.
+These facts must be resolved when `core.record`, `core.block`, and Genesis bootstrap behavior are reviewed. This spec must not invent replacement rules before that review.
 
-There is no current-model `core.record <-> core.plugin` bootstrap cycle. Genesis directly creates `S0`; ordinary Plugin release rules begin after Genesis.
+## Prohibited design assumptions
 
-## No mandatory bootstrap business identity
-
-Genesis does not create a mandatory Root Member, Repository, or packer Entity.
-
-Ordinary post-Genesis facts include:
-
-- Repository instances;
-- Member / membership facts;
-- Asset inventory;
-- Plugin artifact Asset/provenance relations;
-- ordinary Plugin releases;
-- Project/labour facts.
-
-Genesis initial Plugins are the only issuer-less Plugin bootstrap exception.
-
-## Genesis manifest type
-
-The implementation must expose an equivalent of:
-
-```ts
-interface GenesisManifestEntry {
-  name: string
-  version: string
-  pluginHash: PluginHash
-}
-
-interface GenesisManifest {
-  plugins: GenesisManifestEntry[]
-}
-```
-
-`pluginHash` is the exact PluginHash defined by `core.plugin`.
-
-## Canonical ordering
-
-`plugins[]` is sorted by:
+Implementations must not assume solely from Genesis that:
 
 ```text
-name@version
+initial Plugins bypass Record.data
+initial Plugins are issuer-less special release entities
+Genesis directly constructs an S0 Plugin state from a separate manifest
+Genesis identity is a hash of a Plugin-entry manifest
+ordinary Plugin release/activation logic belongs to core.plugin
 ```
 
-using UTF-8 lexicographical ascending order.
+Those assumptions came from the superseded design and are removed.
 
-Each `name@version` must be unique in the Genesis manifest.
+## Current acceptance
 
-Ordering is canonicalization only; all initial Plugins are conceptually present together in `S0`.
-
-## Canonical Genesis manifest bytes
-
-Canonical Genesis manifest uses compact UTF-8 JSON.
-
-The root field order is exactly:
+For work performed before the later Genesis review, only the following may be treated as frozen:
 
 ```text
-plugins
+Plugin is data
+Plugin data is carried by Record
+Genesis is a Block
+Genesis carries Plugin Records in Block.records[]
+Plugin artifact validity uses core.plugin runtime verification
 ```
 
-Each entry field order is exactly:
-
-```text
-name
-version
-pluginHash
-```
-
-Unknown fields are invalid in this version.
-
-Canonical bytes exclude insignificant whitespace, comments, archive metadata, compression metadata, timestamps, issuer metadata, and signatures.
-
-Conceptual byte shape:
-
-```json
-{"plugins":[{"name":"core.block","version":"0.1.0","pluginHash":"..."},{"name":"core.entity","version":"0.1.0","pluginHash":"..."},{"name":"core.plugin","version":"0.1.0","pluginHash":"..."},{"name":"core.record","version":"0.1.0","pluginHash":"..."}]}
-```
-
-Implementations must explicitly construct canonical bytes rather than rely on incidental object-property ordering.
-
-## GenesisId
-
-Genesis identity is:
-
-```text
-GenesisId = DoubleSHA256(canonical GenesisManifest bytes)
-```
-
-Serialized form:
-
-```text
-64-char lowercase hexadecimal
-```
-
-GenesisId is a digest and is not Base58.
-
-There is no separate `pluginsRoot` in this version.
-
-Each manifest `pluginHash` already transitively commits to the exact executable Plugin artifact manifest and all runtime-relevant file bytes, so GenesisId transitively commits to the complete initial executable Plugin set.
-
-## Genesis package transport
-
-The Genesis package must provide the complete Plugin artifact corresponding to every manifest entry.
-
-The physical package/archive/transport representation is not part of Genesis identity.
-
-The same Genesis may be transported via different archive/compression/storage forms without changing GenesisId, provided:
-
-- canonical Genesis manifest is unchanged;
-- every embedded/resolved Plugin artifact verifies to the exact listed PluginHash.
-
-## Recognition inputs
-
-Genesis recognition receives at least:
-
-```text
-configuredGenesisId
-genesisManifest
-initialPluginArtifacts
-runnerAbiSupport
-```
-
-Artifact bytes/resolution are explicit inputs. Recognition performs no hidden source clone/build/package-manager resolution.
-
-## Recognition behavior
-
-`recognizeGenesis(...)` must:
-
-1. validate Genesis manifest shape;
-2. validate `plugins[]` canonical order and unique `name@version`;
-3. validate each PluginHash representation;
-4. canonicalize the manifest;
-5. calculate GenesisId;
-6. require it to equal `configuredGenesisId`;
-7. require exactly one matching complete artifact for every manifest entry;
-8. verify every artifact with `core.plugin.verifyArtifact` semantics;
-9. require artifact manifest `name/version/PluginHash` to match its Genesis entry;
-10. validate that all initial chain-Plugin dependencies resolve by exact PluginHash within the complete S0 set;
-11. require the runner to support each initial Plugin's runtime kind/ABI before loading it;
-12. only then construct active Plugin state `S0`.
-
-Genesis recognition must not call ordinary Plugin release Record validation and must not require a Repository issuer.
-
-## Initial dependency resolution
-
-Unlike ordinary post-Genesis release, initial Plugins may depend on each other inside the Genesis set because they are all established together as `S0`.
-
-Dependency validation must resolve exact PluginHash references against the complete verified Genesis Plugin set.
-
-This does not create business or topological ordering among initial Plugins.
-
-Missing or inconsistent dependency identity rejects Genesis recognition.
-
-## State transition boundary
-
-After successful recognition:
-
-```text
-GenesisId + verified initial artifacts
-        -> S0
-```
-
-The first ordinary Block is validated against `S0` and links to the recognized GenesisId:
-
-```text
-B1.header.previousBlock = GenesisId
-```
-
-All later ordinary Blocks use the preceding `core.block.blockId(...)` result.
-
-No reusable Genesis branch may exist inside ordinary Plugin/Record/Block validators.
-
-## No ordinary packer/signature
-
-Genesis is not an ordinary Block confirmation and does not require ordinary BlockHeader fields such as:
-
-```text
-previousBlock
-createdAt
-packer
-signature
-```
-
-Genesis trust comes from the externally configured/pinned GenesisId.
-
-Packer authorization and canonical-chain selection after Genesis belong to runner/server policy.
-
-## Source-history boundary
-
-The following historical behaviors remain Source Fact but are not requirements of the current Genesis package:
-
-- `previousHash = "0"`;
-- Protocol bootstrap Records;
-- Protocol Record IDs equaling Protocol hashes;
-- `createdBy = "Root"` bootstrap metadata;
-- Root Member creation;
-- Genesis Repository creation;
-- Genesis Repository as packer identity;
-- historical Genesis BlockHeader signing path;
-- historical separate `sys.block-header` Protocol;
-- historical Genesis Record/Merkle container shape.
-
-## Failure cases
-
-Reject Genesis recognition when any of the following occurs:
-
-- malformed/unknown Genesis manifest field;
-- noncanonical ordering;
-- duplicate `name@version`;
-- malformed PluginHash;
-- calculated GenesisId differs from configured GenesisId;
-- a listed Plugin artifact is missing;
-- an extra/unmatched initial Plugin artifact is supplied where exact package matching is required;
-- artifact PluginHash mismatch;
-- artifact `name/version` mismatch;
-- initial Plugin dependency cannot resolve by exact PluginHash in the complete S0 set;
-- runner cannot load a required initial Plugin runtime kind/ABI.
+Do not implement a standalone `recognizeGenesis(initialPluginArtifacts)` path from the superseded S0 model.
 
 ## Tests
 
-Meaningful tests should cover:
+No standalone Genesis implementation tests are required from the `core.plugin` implementation issue.
 
-- canonical Genesis manifest fixture;
-- deterministic GenesisId fixture;
-- lexical `name@version` ordering;
-- duplicate entry rejection;
-- manifest mutation changing GenesisId;
-- transport/compression representation not changing GenesisId;
-- Plugin artifact byte mutation causing PluginHash/Genesis recognition failure;
-- exact initial dependency resolution inside S0;
-- configured GenesisId mismatch rejection;
-- no Repository/createdBy/signature requirement;
-- the initial set including `core.plugin`, `core.record`, `core.entity`, and `core.block` without `core.block-header`;
-- B1 using recognized GenesisId as `previousBlock`;
-- ordinary validators containing no second Genesis path.
-
-## Resolved blocker
-
-Canonical Genesis identity is fully defined by the canonical Genesis manifest and exact initial PluginHash set.
-
-There is no remaining Genesis serializer/ordering/header blocker in the current docs/spec model.
+When Genesis is implemented later, tests must be derived from the reviewed Record/Block bootstrap contract and historical fixtures rather than the removed `GenesisManifest/S0` model.

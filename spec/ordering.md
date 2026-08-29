@@ -1,42 +1,21 @@
 # Ordering Specification
 
-Status: defined for the current Core Plugin model.
+Status: defined only for separation of Block confirmation order, business relation order, and runtime arrival order. Plugin Record availability semantics remain pending `core.record` / `core.block` review.
 
 ## Source
 
 - `docs/ordering.md`
 - `docs/architecture.md`
 - `docs/plugin.md`
+- historical `blockchain-service` validation/storage paths
 
 ## Independent orders
 
 Implementation must not collapse these into one sequence:
 
-1. Plugin activation order;
-2. Block confirmation order;
-3. business Record relation order.
-
-Only the first two are Core ordering rules.
-
-## Plugin activation
-
-When validating ordinary Block `N`, the active Plugin environment is the state established before Block `N` begins.
-
-A valid Plugin release confirmed inside Block `N` becomes active only after Block `N` is fully accepted. Ordinary Records using that Plugin may first appear in Block `N+1`.
-
-The validator must reject a Record whose exact `plugin` + `pluginHash` is not active in the pre-Block Plugin state, even if the same Block contains an earlier release Record for it.
-
-Genesis is the only bootstrap exception because it directly creates initial Plugin state `S0` from its embedded Plugin artifacts.
-
-## Plugin dependency order
-
-For an ordinary post-Genesis Plugin release, every external chain-Plugin dependency declared in its artifact manifest must resolve by exact PluginHash in the pre-Block active Plugin state.
-
-Therefore a Plugin released in Block `N` cannot satisfy another new Plugin's dependency in that same Block.
-
-This rule avoids an intra-Block Plugin dependency bootstrap environment and keeps validation of Block `N` against one immutable Plugin state.
-
-Genesis handles its initial Plugin set separately: all S0 artifacts are verified as one complete bootstrap set by `spec/genesis.md`.
+1. Block confirmation/storage order;
+2. business Record relation order;
+3. runtime receive/process order.
 
 ## Block confirmation order
 
@@ -46,62 +25,75 @@ The Core Block Chain determines confirmation/storage order:
 Genesis -> B1 -> B2 -> ...
 ```
 
-Record array order inside a Block is part of the Block representation and affects the version-defined Merkle commitment.
+Record array order inside a Block is part of Block representation and may affect the version-defined Block commitment/Merkle calculation.
 
-Core must not infer labour causality, Project membership, Asset lineage, or other business meaning from Block position or Record array order.
+Core must not infer labour causality, Project membership, Asset lineage, source/build lineage or other business meaning solely from Block position or Record array order.
 
 ## Business Record relations
 
-Labour/Asset relations may form a Git-like DAG through fields defined by domain Plugins.
+Labour/Asset/Project relations may form domain-defined DAGs through fields in `Record.data`.
 
-Core does not define a common `dependsOn` / `references` field and does not use a business DAG as a generic Block-validity condition.
+Core does not define a common business `dependsOn` / `references` relation and does not use a generic business DAG as a Block-validity condition.
 
-Accordingly, Core does not require:
+Accordingly, Core does not generically require:
 
-- business references to point to an earlier Block;
-- business references to point to an earlier Record in the same Block;
-- Block Records to be topologically ordered by labour/asset dependencies;
-- a generic Core dependency graph to be acyclic.
+- business references to target an earlier Block;
+- business references to target an earlier Record in the same Block;
+- Block Records to be topologically ordered by business dependencies;
+- a generic business graph to be acyclic.
 
-If a domain Plugin requires some referenced fact to exist or imposes its own consistency rule, that requirement belongs to that Plugin's deterministic payload validation, not to `core.block` ordering.
+Domain Plugin rules may impose their own deterministic constraints.
 
 ## Runtime arrival order
 
-Runtime receive order is not Core confirmation order and is not business causal order.
+Runtime receive, queue or process order is not Core confirmation order and is not business causal order.
 
-Queue position or `receivedAt` metadata must not acquire chain meaning unless a specific Plugin explicitly defines such meaning.
+Host/runtime metadata must not acquire chain meaning unless a specific Plugin explicitly defines such meaning in its data contract.
 
-## Core validation view
+## Plugin Record availability is not frozen here
 
-Ordinary Block `N` uses one fixed ordering-sensitive Plugin state:
+Plugin is ordinary Record data:
 
 ```text
-Plugin environment
-= active Plugin state after Block N-1
+Record.data = Plugin
 ```
 
-The current Block does not mutate that environment while its Records are being validated.
+There is no independent `PluginRelease` / `activePluginState` object owned by `core.plugin`.
 
-After the whole Block is accepted, accepted `core.plugin` release Records produce the state used for Block `N+1`.
+The previously specified rule:
+
+```text
+Plugin confirmed in Block N
+-> active from Block N+1
+```
+
+is removed as an already-decided requirement.
+
+Before implementation, `core.record` / `core.block` review must determine from source and current executable requirements:
+
+```text
+whether a Plugin Record can interpret a later Record in the same Block
+whether Plugin dependency resolution may use same-Block Plugin Records
+whether validation requires a pre-Block Plugin snapshot
+how Genesis bootstrap Plugin Records participate
+```
+
+No implementation issue may assume one answer before that review.
+
+## Genesis
+
+Genesis remains a Block containing Records, including initial `Record.data = Plugin` values.
+
+There is no separate S0 Plugin artifact-set ordering path.
 
 ## Failure cases
 
-Ordering-related Core validation fails when:
+At this stage, ordering-related generic Core failure conditions are limited to rules established by the reviewed `core.block` contract itself.
 
-- a Record uses an exact Plugin not active before the Block;
-- a Plugin released in the current Block is treated as active within that same Block;
-- a new Plugin release depends on a Plugin not active before the Block;
-- Block linkage/order requirements defined by `core.block` fail.
-
-Business DAG shape or topological order is not a generic Core failure condition.
+Business DAG topology and unreviewed Plugin-availability assumptions are not generic Core failure conditions.
 
 ## Tests
 
-Meaningful tests should cover:
+Ordering tests may cover Block representation/order and the absence of generic business-DAG semantics once `core.block` is implemented.
 
-- Plugin release in Block N cannot be used by another Record in Block N;
-- the same Plugin becomes usable in Block N+1;
-- a Plugin released in Block N cannot satisfy another same-Block Plugin dependency;
-- exact PluginHash resolution rather than name/version-only matching;
-- changing Record array order changes the Merkle commitment where applicable;
-- business references do not gain generic Core ordering semantics.
+Do not add tests for N->N+1 Plugin activation, same-Block Plugin rejection, or S0 dependency ordering until the corresponding Record/Block review explicitly approves those rules.

@@ -1,0 +1,30 @@
+{
+  "name": "@labourchain/core-plugins",
+  "version": "0.0.0",
+  "description": "Deterministic core chain plugins for LabourChain",
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "license": "MIT",
+  "exports": {
+    ".": "./lib/index.js",
+    "./plugin": "./lib/plugin.js"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.d.ts",
+    "docs/**/*.md",
+    "spec/**/*.md",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}
