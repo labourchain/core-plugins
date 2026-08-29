@@ -1,6 +1,10 @@
 # `core.block` Specification
 
-Status: defined for ordinary post-Genesis Blocks, using the resolved GenesisId and Plugin-state model.
+Status: **pending source-aligned review before implementation**.
+
+This file intentionally freezes only source-derived Block/BlockHeader/Merkle facts and current architecture boundaries. Earlier proposals for a new BlockHeader shape, BlockId, GenesisId linkage, `activePluginState`, N→N+1 Plugin activation, same-Block Plugin rejection, and `nextPluginState` belong to the superseded Plugin-state design and are not normative requirements.
+
+Issue #9 is the implementation gate.
 
 ## Source
 
@@ -11,149 +15,117 @@ Historical source:
 - `Ri0n72Y/blockchain-service/lib/model/types.go`
 - `Ri0n72Y/blockchain-service/cmd/script/main.go::calcMerkleRoot`
 - `Ri0n72Y/blockchain-service/lib/data/blockHandler.go::VerifyBlockHeader`
+- historical Genesis construction in `cmd/script/main.go`
 
-Current design source:
+Current boundary source:
 
+- `docs/source-baseline.md`
 - `docs/architecture.md`
 - `docs/block.md`
-- `docs/plugin.md`
 - `docs/ordering.md`
-- `docs/genesis.md`
+- `docs/plugin.md`
 
-## Plugin identity
+## Source data model
 
-The current Core Plugin is:
-
-```text
-core.block@0.1.0
-```
-
-It absorbs the responsibilities historically split between `sys.block` and `sys.block-header`.
-
-There is no independent `core.block-header` Plugin. `BlockHeader` is a public type exported by `core.block`.
-
-## Public types
-
-The Plugin must expose equivalents of:
+Historical Block:
 
 ```ts
-interface BlockHeader {
-  previousBlock: BlockId | GenesisId
-  recordsRoot: RecordsRoot
-  createdAt: string
-  packer: EntityPublicKey
-  signature: Signature
-}
-
 interface Block {
   header: BlockHeader
   records: Record[]
 }
 ```
 
-`Block` does not store an independently declared `id` field. Block identity is derived by `blockId(header)`.
-
-Semantic aliases:
+Historical BlockHeader fields:
 
 ```text
-EntityPublicKey = base58btc-encoded Entity public key
-BlockId         = DoubleSHA256 digest
-GenesisId       = DoubleSHA256 digest
-RecordId        = DoubleSHA256 digest
-RecordsRoot     = ordered RecordId Merkle result
-Signature       = Ed25519 signature result, not Base58 identity
+hash
+previousHash
+createdAt
+packer
+signature
 ```
 
-DoubleSHA256-derived values use lowercase hexadecimal when serialized as chain text.
+Current architecture keeps `BlockHeader` as a public type owned by `core.block`; there is no independent `core.block-header` Plugin.
 
-## Required executable capabilities
+Exact current field names/identity semantics require dedicated review and must not be inferred from the superseded design.
 
-`core.block` must provide deterministic equivalents of:
+## Source Merkle algorithm
 
-```text
-recordsRoot(records or recordIds)
-signingPayload(unsignedHeader)
-verifyHeader(header)
-blockId(header)
-verifyBlock(inputs)
-```
-
-`blockId` is required Plugin behavior, not a runner-only helper.
-
-The Plugin does not own secret-key storage, packer authorization, canonical-chain policy, persistence, or transport.
-
-## Entity key boundary
-
-`packer` is an Entity public-key reference and uses the base58btc codec defined by `core.entity`.
-
-Verification must:
-
-1. base58btc-decode `packer`;
-2. require exactly 32 Ed25519 public-key bytes;
-3. verify the Header signature with those key bytes.
-
-Entity secret keys never appear in Block data.
-
-## Signature representation
-
-`signature` is an Ed25519 signature result, not Base58.
-
-Current wire representation is lowercase hexadecimal over the 64-byte signature. Malformed encoding or decoded length other than 64 bytes is invalid.
-
-## Records Merkle root
-
-`recordsRoot()` preserves the historical ordered Merkle algorithm:
+Historical `calcMerkleRoot(ids)` behaves as:
 
 ```text
-0 Record IDs -> ""
-1 Record ID  -> that ID directly
-pair         -> DoubleSHA256(left + right)
-odd final    -> DoubleSHA256(id + id)
+0 ids -> ""
+1 id  -> id
+pair  -> DoubleSHA256(left + right)
+odd   -> DoubleSHA256(id + id)
 repeat until one value remains
 ```
 
-`left` and `right` are lowercase-hex RecordId text values. `DoubleSHA256` returns lowercase hexadecimal.
+`left/right` are the historical RecordId text values.
 
-Record array order is part of the Block representation and Merkle commitment only. It does not acquire Labour / Asset DAG semantics.
+This algorithm is a source fact and should be preserved unless the Block review establishes a concrete migration reason to change it.
 
-## Unsigned BlockHeader payload
+## Current confirmed responsibilities
 
-The signing payload contains exactly these fields in this order:
+`core.block` owns the Block/BlockHeader data contract and deterministic operations required to validate the Block confirmation container.
+
+Confirmed boundary:
 
 ```text
-previousBlock
-recordsRoot
-createdAt
-packer
+Block contains ordered Record[]
+BlockHeader belongs to core.block
+Block chain order is confirmation/storage order
+business Labour/Asset/Project DAG is not generic Block semantics
 ```
 
-Canonical bytes are compact UTF-8 JSON of that exact ordered shape:
+The exact executable capability list remains pending review. Historical Merkle calculation and Header verification are source inputs.
 
-```json
-{"previousBlock":"...","recordsRoot":"...","createdAt":"...","packer":"..."}
+## Plugin Record resolution — pending review
+
+Plugin is ordinary Record data:
+
+```text
+Record.data = Plugin
 ```
 
-`signature` is excluded from its own signing payload.
+There is no independent `PluginRelease` or `activePluginState` object owned by `core.plugin`.
 
-Implementations must construct the byte shape explicitly rather than depend on incidental object-property ordering.
+Before `verifyBlock` or equivalent can be frozen, review must determine:
 
-## Header verification
+```text
+how each Record resolves its exact Plugin
+whether a Plugin Record earlier in the same Block may interpret a later Record
+whether same-Block Plugin dependencies may resolve
+whether a pre-Block Plugin snapshot is required
+how Genesis Plugin Records bootstrap interpretation
+```
 
-`verifyHeader(header)` must:
+Do not assume N→N+1 activation or same-Block rejection.
 
-1. validate field representations;
-2. derive canonical unsigned Header bytes;
-3. base58btc-decode `packer` into a 32-byte Ed25519 public key;
-4. decode lowercase-hex `signature` into 64 bytes;
-5. perform Ed25519 verification.
+## Genesis — pending review
 
-Success proves only that the corresponding Entity key signed the Header payload. It does not prove packer authorization or canonical-chain status.
+Genesis remains a Block containing Records.
 
-## BlockId
+Historical Genesis facts include:
 
-`blockId(header)` derives identity from the final signed BlockHeader.
+```text
+previousHash = "0"
+Protocol Records in Block.records[]
+Protocol Record IDs equal ProtocolHash
+Root Member Record
+Genesis Repository Record
+Genesis Repository public key as packer
+historical Header signing flow
+```
 
-Canonical final Header field order is exactly:
+The previously designed standalone `GenesisManifest`, `GenesisId`, and initial `S0 Plugin artifact set` are removed assumptions.
+
+Any current Genesis linkage rule must be derived during the dedicated Record/Block/Genesis review.
+
+## BlockHeader signing / Block identity — pending review
+
+The superseded design proposed:
 
 ```text
 previousBlock
@@ -163,155 +135,49 @@ packer
 signature
 ```
 
-using compact UTF-8 JSON:
+with a new canonical JSON signing payload and derived BlockId.
 
-```json
-{"previousBlock":"...","recordsRoot":"...","createdAt":"...","packer":"...","signature":"..."}
-```
+These are not frozen here.
 
-Then:
+The review must compare them with historical `hash/previousHash/createdAt/packer/signature`, historical `VerifyBlockHeader`, and Genesis script behavior before selecting current semantics.
 
-```text
-BlockId = DoubleSHA256(canonicalSignedHeaderBytes)
-```
+## Entity / packer boundary
 
-The result is lowercase hexadecimal and is not Base58.
+It remains valid that secret-key storage, packer authorization and canonical-chain selection are not properties of the Block data structure itself.
 
-Changing any signed Header field or the signature changes BlockId.
-
-## Chain linkage
-
-For ordinary Block `Bn`, `n > 1`:
-
-```text
-Bn.header.previousBlock = blockId(Bn-1.header)
-```
-
-For the first ordinary Block:
-
-```text
-B1.header.previousBlock = GenesisId
-```
-
-`GenesisId` is supplied by the already-completed Genesis recognition path defined in `spec/genesis.md`.
-
-`core.block` validates against an explicit preceding identity supplied by the caller and does not select a canonical branch.
-
-## Plugin-state rule
-
-Ordinary Block `N` is validated against the immutable `activePluginState` established before Block `N` begins.
-
-A Plugin release Record contained in Block `N` does not make that Plugin active while validating any other Record in Block `N`.
-
-Only after the complete Block succeeds may accepted Plugin release Records be applied to produce the state used by Block `N+1`.
-
-## `verifyBlock` inputs
-
-Ordinary Block verification receives at least:
-
-```text
-precedingIdentity
-activePluginState
-candidateBlock
-```
-
-The runner chooses which preceding identity/state pair it asks Core to verify against.
-
-## `verifyBlock` behavior
-
-Conceptual validation order:
-
-1. compare `candidateBlock.header.previousBlock` with `precedingIdentity`;
-2. derive `recordsRoot` from candidate Records in declared array order;
-3. require the derived value to equal `candidateBlock.header.recordsRoot`;
-4. freeze `activePluginState` for the whole Block;
-5. validate every Record against only exact Plugins active in that state;
-6. for `core.plugin` release Records, validate artifact/issuer/dependencies using the same pre-Block state;
-7. verify the BlockHeader signature;
-8. derive candidate BlockId using `blockId(header)`;
-9. only after complete acceptance, apply accepted Plugin releases to produce `nextPluginState`.
-
-A useful deterministic return value may expose:
-
-```text
-blockId
-nextPluginState
-```
-
-without persisting either value inside the Plugin.
-
-## Exact Plugin resolution
-
-Record validation must resolve:
-
-```text
-Record.plugin = name@version
-Record.pluginHash = exact PluginHash
-```
-
-against the same entry in `activePluginState`.
-
-A name/version match with a different PluginHash is invalid.
+However, exact public-key encoding and signature wire representation must be aligned with the reviewed `core.entity` / `core.block` contract rather than inherited uncritically from the superseded proposal.
 
 ## Business relation boundary
 
-Labour / Asset DAG topology is outside generic Core Block validity.
+Core Block validity must not generically infer or impose:
 
-The Plugin must not:
+```text
+Labour causality
+Asset lineage
+Project membership
+Repository membership
+business dependency topology
+```
 
-- require a business reference to target an earlier Block;
-- require a business reference to target an earlier Record in the current Block;
-- topologically sort Records by Labour/Asset relations;
-- reject a Block merely because a generic business relation graph is cyclic.
-
-Domain-specific payload consistency belongs to the exact active domain Plugin.
-
-## Runner/server boundary
-
-`core.block` does not define:
-
-- secret-key storage;
-- which Entity may propose/pack a Block;
-- packer authorization policy;
-- canonical-chain selection;
-- Plugin artifact persistence/fetch policy;
-- transport/synchronization;
-- retry/scheduling policy.
-
-These belong to the independent runner/server composition.
+Record array order may be part of Block representation/commitment but does not automatically acquire business meaning.
 
 ## Failure cases
 
-Reject an ordinary Block when any required Core condition fails, including:
+Do not freeze failure cases that depend on unreviewed Plugin availability, GenesisId, new Header fields, or new BlockId rules.
 
-- previous linkage mismatch;
-- ordered Record IDs do not reproduce `header.recordsRoot`;
-- a Record is invalid;
-- a Record references a Plugin not active before the Block;
-- `Record.plugin` / `pluginHash` do not resolve to the same active Plugin;
-- a Plugin release fails `core.plugin` validation;
-- Header field/key/signature encoding is invalid;
-- Ed25519 Header verification fails.
-
-No partial Plugin-state update may survive a rejected Block.
-
-Labour / Asset DAG topology is not a generic Core failure condition.
+Source-derived malformed Block/BlockHeader representation and Merkle/Header verification failures should be turned into exact failure cases only after the dedicated review fixes the current data contract.
 
 ## Tests
 
-Meaningful tests must cover at least:
+Before issue #9 is refined into implementation scope, do not add tests for:
 
-- source Merkle fixtures for zero, one, even, and odd Record counts;
-- Record array order affecting RecordsRoot;
-- exact unsigned Header byte shape/order;
-- base58btc packer fixture and Ed25519 verification;
-- malformed packer/signature encoding rejection;
-- exact signed Header byte shape/order used by `blockId`;
-- deterministic BlockId fixture;
-- mutation of any Header field/signature changing BlockId;
-- GenesisId linkage for B1;
-- previous BlockId linkage for B2+;
-- Plugin released in Block N remaining inactive until Block N+1;
-- exact name/version + PluginHash resolution;
-- invalid Record or Plugin release rejecting the complete Block without advancing Plugin state;
-- business DAG relationships introducing no hidden Core ordering requirement.
+```text
+N -> N+1 Plugin activation
+same-Block Plugin inactivity
+activePluginState / nextPluginState
+standalone GenesisId linkage
+new fixed Header JSON bytes
+new BlockId algorithm
+```
+
+Future tests should start from historical Block/Merkle/Header fixtures and the reviewed current migration decisions.

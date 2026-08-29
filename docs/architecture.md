@@ -1,22 +1,14 @@
 # Current Architecture
 
-本文记录当前 LabourChain/Core 已接受的需求与架构。旧 Service 的历史事实依据见 [`source-baseline.md`](source-baseline.md)。
+本文记录 LabourChain/Core 当前接受的总体边界。迁移设计优先服从旧 `blockchain-service` 已存在的数据组合关系；只有旧代码缺失或为了 executable Plugin 迁移确有必要时才新增规则。
 
-## Current Design：五部分 MVP
+历史事实依据见 [`source-baseline.md`](source-baseline.md)。各 Core 类型的细节由对应 spec 单独审查。
 
-LabourChain 当前分为五个可独立演进的部分。
+## Core 的职责
 
-### Core
+Core 只负责最小区块链确证结构，不负责劳动确证、项目组织、资产业务或插件生态治理。
 
-Core 提供最稳定的链级能力：
-
-- Plugin artifact identity、release 与 activation；
-- 可验证 Record envelope；
-- Entity public-key identity primitive；
-- Block 批量确证与连续存储历史；
-- Genesis 与 initial Plugin state。
-
-当前 Core Plugins：
+当前 Core 包含四个 Plugin：
 
 ```text
 core.plugin
@@ -25,212 +17,100 @@ core.entity
 core.block
 ```
 
-### LabourFlow
+它们围绕三种基础数据与一种区块容器展开：
 
-LabourFlow 面向劳动事实输入：
+```mermaid
+flowchart TB
+    Core["Core"]
+    Core --> P["Plugin data"]
+    Core --> R["Record data"]
+    Core --> E["Entity data"]
+    Core --> B["Block + BlockHeader"]
 
-- 劳动记录 UI；
-- 自然语言 → structured Record Draft；
-- 人工确认与签名；
-- Member 履历/简历等输入体验。
-
-### Board
-
-Board 面向 Project：
-
-- 用已有 Record / Asset 组织 Project；
-- 展示进展；
-- 规划、分析、回顾与投影；
-- 将确认后的结论重新形成普通 Record。
-
-Project 是事实与资产的组织层，不改变底层事实。
-
-### Repo
-
-Repo 是资产管理空间与组织成员挂载点：
-
-- 保存/引用 Asset；
-- 建立 Repository business Entity；
-- 建立 Member/Repository 组织关系；
-- 保存劳动事实与资产；
-- 作为普通 Plugin release 的 issuer/releaser；
-- 维护 Plugin artifact、源码、build inputs、commits 与贡献历史之间的 Asset/Labour graph。
-
-### Runtime
-
-Runtime 提供可替换的运行能力，例如：
-
-- MongoDB / Redis；
-- filesystem / object storage；
-- ORM / index / cache / bridge；
-- Plugin artifact fetch/cache；
-- runner/server composition。
-
-这些能力服务运行与查询，不改变 Core Plugin 对相同输入的确定性结果。
-
-## Current Design：Plugin 统一语义
-
-旧 `blockchain-service` 使用 `Protocol` 表示以 schema 为主的数据协议。
-
-当前模型不再保留一个与 Plugin 并列的 Protocol 实体。`Protocol` 只用于 Historical Source；当前链上可执行规则统一称为 **Plugin**。
-
-Plugin 是不可变、可版本发布的 executable package：
-
-```text
-Plugin
-├── schema / public types
-├── deterministic executable functions
-├── runtime descriptor
-└── executable artifact files
+    P --> RP["carried by Record.data"]
+    E --> RE["carried by Record.data"]
+    R --> BR["Block.records[]"]
 ```
 
-它在能力上相当于 Smart Contract，但工程模型更接近 package/plugin。
+`BlockHeader` 是 `core.block` 拥有的公开类型，不存在独立 `core.block-header` Plugin。
 
-Plugin 以：
+## Core 不承担劳动确证
 
-```text
-name@version
-```
+Core 确认的是：
 
-发布；历史 release 不原地改写。
+> 一组 Records 以确定的数据格式被放入区块，并形成连续、可验证的链历史。
 
-`BlockHeader` 是 `core.block` 的公开类型，不存在独立 `core.block-header` Plugin。
-
-## Current Design：Plugin artifact 是执行事实
-
-runner 执行已经构建完成的 artifact，而不是 source checkout。
+它不直接判断：
 
 ```text
-source / build inputs
-        |
-        v
-      build
-        |
-        v
-Plugin artifact
-        |
-        v
-canonical PluginManifest
-        |
-        v
-   PluginHash
+某项劳动是否完成
+劳动量是多少
+成果属于谁
+Project 如何组织
+Asset 如何演化
+Repository / Member 的业务权限
 ```
 
-`PluginHash` 是 executable artifact 的精确 content identity。
+这些语义由后续 `work.*`、`labour.*`、`repo.*`、`project.*` 等 package/Plugin 定义，并以普通 Record 进入链。
 
-Plugin artifact 由 [`plugin.md`](plugin.md) 定义：
+因此 Core confirmation chain 与 Labour / Asset / Project 等业务图是正交的。
 
-- 每个 runtime file 由 `FileHash = DoubleSHA256(raw bytes)` 锁定；
-- canonical manifest 承诺 name/version、runtime kind/ABI/entry、schema path、exact chain-Plugin dependencies 与完整 file set；
-- `PluginHash = DoubleSHA256(canonical PluginManifest bytes)`；
-- archive/compression representation 不参与 identity。
+## Plugin 是一种 Record.data
 
-因此不同 runner 只要验证同一个 PluginHash，就能确认自己取得的是同一个 executable Plugin artifact。
-
-## Current Design：runtime lock 与 build lock 分离
-
-普通 npm/pnpm dependency 不进入 runner 的动态 dependency resolution。
-
-第一版要求：
+旧 Service 中 `Protocol` 本身就是普通 Record 的 `data`。当前迁移保留这个结构，只把 schema-only Protocol 演化为 executable Plugin。
 
 ```text
-normal package dependency
-    -> bundle/vendor at build time
-    -> Plugin artifact
+Record
+├── plugin = core.plugin@version
+├── pluginHash
+├── createdBy
+├── createdAt
+├── signature
+└── data = Plugin
 ```
 
-运行期外部依赖只保留：
-
-1. versioned runner ABI；
-2. 其他链 Plugin，并按 exact `PluginHash` 锁定。
-
-runner 不执行：
+`core.plugin` 只定义 Plugin 数据及其 runtime artifact validation：
 
 ```text
-npm install
-pnpm install
-semver range resolution
-postinstall
-source compile/bundle
+validatePlugin
+canonicalPlugin
+fileHash
+pluginHash
+verifyArtifact
 ```
 
-package-manager lockfile、compiler/bundler version、build config、source commit 等属于 Repository build provenance。
+它不负责发行、SDK、Repository issuer、版本推荐、弃用、packer policy 或 Core Profile。
 
-bit-for-bit reproducible build 是可选的更高层审计能力，不是 Plugin runtime validity 的前置条件。runtime validity 的核心是实际执行 artifact 与链上 PluginHash 完全一致。
+详细模型见 [`plugin.md`](plugin.md) 与 [`../spec/core-plugin.md`](../spec/core-plugin.md)。
 
-## Current Design：Repository 是普通 Plugin issuer
+## Protocol 到 Plugin 的必要迁移
 
-普通 post-Genesis Plugin release 的 issuer/releaser 是 Repository。
+旧 `Protocol` 主要包含：
 
 ```text
-Plugin release Record.createdBy
-= Repository public key
+protocolId
+version
+package
+schema
+contributors
+description
 ```
 
-Repository public key 使用 `core.entity` 的 base58btc Entity identity。
-
-`BlockHeader.packer` 与 Plugin issuer 是不同语义：
+当前 `Plugin` 保留协议名称、版本与 schema 语义，并为了 executable runtime 新增：
 
 ```text
-createdBy -> 谁发行这条 Plugin release fact
-packer    -> 谁签署这个 Block confirmation
+runtime
+dependencies
+files
 ```
 
-Plugin manifest/release 不重复保存 source repository URL。
+`package`、`contributors`、`description` 不属于 Plugin runtime validity；贡献、源码、build provenance 等由更高层 Record/Asset/Repo/Labour 数据表达。
 
-沿 release Record 可以恢复 provenance：
+PluginHash 现在承诺 exact executable artifact，而不再只承诺 schema descriptor。
 
-```text
-Plugin release Record
-  -> createdBy Repository public key
-  -> Repository
-  -> Plugin artifact Asset
-  -> source/build/commit Assets
-  -> Labour Records
-  -> contribution / version DAG
-```
+## Record 是通用事实容器
 
-Plugin artifact 本身属于 Asset。源码与构建历史由 Repo/Asset/Labour graph 追溯，而不是塞进 executable manifest。
-
-Genesis initial Plugins 是唯一 issuer-less bootstrap 例外。
-
-## Current Design：Entity identity 与 digest 分离
-
-只有 Entity key material 与 Entity public-key reference 使用 Base58。
-
-Base58 固定为 base58btc / Bitcoin alphabet：
-
-```text
-123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz
-```
-
-只做 raw bytes ↔ Base58 text，不使用 Base58Check checksum/version byte/prefix。
-
-```text
-Entity public key -> Base58, on chain allowed
-Entity secret key -> Base58, local only, never on chain
-```
-
-Repository、Member、Record.createdBy、BlockHeader.packer 等字段如果其语义是 Entity public-key reference，就使用该表示。
-
-Signature 不是 identity，也不使用 Base58。
-
-以下值是 DoubleSHA256-derived digest，当前 wire representation 为 lowercase hexadecimal：
-
-```text
-RecordId
-FileHash
-PluginHash
-RecordsRoot
-BlockId
-GenesisId
-```
-
-## Current Design：Record 是事实节点
-
-Record 是 LabourChain 的基本事实单位。
-
-当前 common envelope：
+Record 是 Core 的通用事实节点。当前 common envelope：
 
 ```text
 id
@@ -242,234 +122,105 @@ signature
 data
 ```
 
-其中：
+`data` 的具体结构由 Record 指向的 exact Plugin 定义。
+
+因此 Plugin、Entity、未来 Labour、Asset、Repository、Project 等都通过同一个 Record 机制进入链，不为不同业务类型建立独立确证通道。
+
+RecordId、签名与 exact Plugin resolution 由 `core.record` spec 单独定义和审查。
+
+## Entity 是最小身份数据
+
+Core 的 Entity 只提供链级 public-key-rooted identity primitive。
+
+业务上的 Member、Repository、Organization 等不属于 Core 类型；它们可以在后续 package 中通过 Entity/Record 组合定义。
+
+Entity 的具体编码和签名关系由 `core.entity` / `core.record` spec 单独审查。
+
+## Block 是 Record 的确证容器
+
+Block 的核心关系保持旧 Service 的基本结构：
 
 ```text
-plugin     = exact name@version
-pluginHash = exact executable PluginHash
+Block
+├── header: BlockHeader
+└── records: Record[]
 ```
 
-Record 由 exact active Plugin 解释和验证；仅 name/version 匹配而 PluginHash 不同不算同一个 Plugin。
+Block 负责批量承诺 Records、前后区块连续性和 packer confirmation；它不承担 Labour/Asset DAG 的业务拓扑语义。
 
-Record 可以表达：
+Block/BlockHeader 的 hash、Merkle、签名、Genesis 特例与链选择边界由 `core.block` 审查决定。
 
-- labour fact；
-- ordinary Plugin release；
-- organization/member fact；
-- Asset fact；
-- Project fact；
-- 其他由对应 Plugin 定义的事实。
+## Genesis 继续是 Block
 
-### RecordId 与签名分层
+旧 Service 的 Genesis 是一个实际 Block：系统 Protocol、Root Member、Genesis Repository 等都先构造成 Records，再放入 `Block.records[]`。
 
-RecordId 继续承诺 unsigned/common Record 内容：
+当前迁移保留最重要的结构原则：
 
 ```text
-plugin
-pluginHash
-createdBy
-createdAt
-data
+Genesis Block
+└── records[]
+    ├── Record<data = Plugin>
+    ├── Record<data = Plugin>
+    └── ...
 ```
 
-当前 `core.record@0.1.0` 明确定义新的普通 Record signing contract，而不再等待无法从旧仓库恢复的 signing payload。
+因此不再采用独立于 Record/Block 的 `S0 Plugin artifact set` 作为第二条 Plugin 数据通路。
 
-验证者必须先按 RecordId 规则重新计算 Record 内容并确认：
+Genesis 中哪些 RecordId、signature、Header 字段需要 bootstrap 特例，应在 Genesis / `core.record` / `core.block` 审查中依据旧代码逐项决定，而不是由 `core.plugin` 发明特殊发行机制。
+
+## Runtime 边界
+
+Runtime 提供可替换的宿主能力，例如：
 
 ```text
-record.id == recordId(rawRecord)
+process / Cordis Context
+Plugin artifact fetch/cache
+filesystem / object storage
+MongoDB / Redis / index
+network transport / sync
+secret-key storage / signer
+sandbox / capability policy
+observability
 ```
 
-随后构造签名 payload：
+Core Plugin 对相同显式输入必须给出确定性结果；Runtime 不改变 Core 数据模型。
+
+普通 npm/pnpm/build dependency 应在 Plugin build 阶段处理。`core.plugin` runtime identity 只记录最终 artifact 与 exact chain Plugin dependencies。
+
+## Repo / Labour / Board / Flow 边界
+
+### Repo
+
+Repo 管理 Repository、Member、Asset、源码/build provenance 等业务事实和资产，不反向成为 Core Plugin 的隐藏依赖。
+
+### Labour / Work
+
+劳动事实、劳动确认、劳动成果与价值关系由后续 `labour.*` / `work.*` package 定义。Core 只保存并确认相应 Records。
+
+### Board
+
+Board 对 Records/Assets 做 Project 组织、计划、回顾和视图投影，不修改底层事实。
+
+### LabourFlow
+
+LabourFlow 提供事实输入、草稿、人工确认、签名与用户交互，不改变 Core 协议结构。
+
+## 迁移纪律
+
+后续逐个审查 Core Plugin 时统一使用三类判断：
 
 ```text
-RECORD_SIGNING_DOMAIN = "labourchain:record:v1:"
+SOURCE
+旧 Service 已经存在
+-> 原则上保留
 
-signingPayload(record.id)
-= UTF8(RECORD_SIGNING_DOMAIN)
-  || hexDecode(record.id)
+REQUIRED MIGRATION
+为了当前明确目标必须新增
+-> 需要具体理由
+
+OUT OF CORE
+业务、发行、治理、SDK、存储、UI 等
+-> 不进入对应 Core Plugin
 ```
 
-其中 `record.id` 必须是 64-char lowercase hexadecimal，并解码为 32 bytes。
-
-普通 Record 使用 `createdBy` 对应的 Ed25519 Entity key 对该 payload 签名：
-
-```text
-signature
-= Ed25519.Sign(createdBy secret key, signingPayload(record.id))
-```
-
-验证时：
-
-1. 重新计算并比对 RecordId；
-2. 将 `createdBy` 从 base58btc 解码为 32-byte Ed25519 public key；
-3. 将 `signature` 从 lowercase hex 解码为 64 bytes；
-4. 对 `signingPayload(record.id)` 执行 Ed25519 verification。
-
-`signature` 的 wire representation 固定为 128-char lowercase hexadecimal。
-
-签名只覆盖已经验证过的 RecordId，是因为 RecordId 已经承诺完整 RawRecord 内容。这样不会再为签名引入第二套 `data` canonicalization。固定 domain prefix 则避免把 Record signature 当成对任意 32-byte digest 的通用签名复用。
-
-`signature` 不参与 RecordId；改变 signature 不改变该事实的内容 identity，但会改变/破坏 author confirmation validity。
-
-Genesis initial Plugin artifacts 不经过普通 Record signing path。
-
-## Current Design：Block 是确证与存储结构
-
-Block 的意义是：
-
-> 一组有序 Record 在某个链位置被正式收录和确证。
-
-```text
-Genesis -> B1 -> B2 -> B3 -> ...
-```
-
-`core.block` 拥有：
-
-```text
-Block / BlockHeader
-recordsRoot()
-signingPayload()
-verifyHeader()
-blockId()
-verifyBlock()
-```
-
-`BlockId` 由最终 signed BlockHeader 的 canonical bytes 做 DoubleSHA256 得到。
-
-第一个普通 Block：
-
-```text
-B1.previousBlock = GenesisId
-```
-
-后续普通 Block：
-
-```text
-Bn.previousBlock = blockId(Bn-1.header)
-```
-
-Block 不承担 Labour/Asset 业务因果语义。
-
-## Current Design：Plugin activation
-
-验证 ordinary Block `N` 时，使用 Block 开始前已经存在的 immutable `activePluginState`。
-
-```text
-Plugin release confirmed in Block N
-        -> active from Block N+1
-```
-
-同一个 Block 内的新 Plugin 不能立即被后续 Record 使用，也不能满足另一个新 Plugin 的 runtime dependency。
-
-外部 chain-Plugin dependency 必须按 exact PluginHash 在 pre-Block state 中解析。
-
-Genesis 是唯一 bootstrap path：其 initial Plugin set 作为完整 `S0` 一次性验证和建立。
-
-## Current Design：Genesis 是 initial Plugin artifact set
-
-Genesis 不再伪装成普通 Record/Block release 流程。
-
-它直接包含完整 initial Plugin artifacts，并有 canonical Genesis manifest：
-
-```text
-plugins[]
-  -> { name, version, pluginHash }
-```
-
-entries 按 `name@version` UTF-8 lexical ascending 排序。
-
-```text
-GenesisId
-= DoubleSHA256(canonical Genesis manifest bytes)
-```
-
-每个 `pluginHash` 又承诺对应完整 executable artifact，因此 GenesisId 传递承诺整个 initial executable Plugin set。
-
-Genesis 不需要：
-
-```text
-createdBy
-createdAt
-Repository issuer
-packer
-signature
-ordinary RecordId
-```
-
-普通 Repository-issued Plugin release 从 Block 1 之后开始。
-
-## Current Design：Core confirmation chain 与 Labour / Asset DAG 正交
-
-Labour、源码、构建和成果关系更接近 Git DAG：
-
-```text
-R1 ----> R3 ----> R6
- \        ^
-  -> R2 -> R4
-```
-
-而 Core confirmation chain 是：
-
-```text
-Genesis -> B1 -> B2 -> B3
-```
-
-两者没有一一对应关系，也不互相决定合法性。
-
-Core 不要求 Block Record 按业务 DAG 做拓扑排序，也不从 Block 顺序反推 labour causality、Asset lineage 或 Project membership。
-
-业务引用的完整性/合理性由对应领域 Plugin 与其消费方决定。
-
-## Current Design：三种时间/顺序分离
-
-至少区分：
-
-```text
-business/created time
-runtime receive time
-block confirmation time
-```
-
-因此：
-
-```text
-arrival order
-!= business causal order
-!= block confirmation order
-```
-
-## Current Design：runner/server 与业务身份分离
-
-运行 Plugin 的计算实例不是 Repository 或 Member 业务实体。
-
-Repository 可以发行 Plugin，但 runner/server 不因此成为该 Repository。
-
-runner/server 负责：
-
-- process startup / Plugin loading；
-- Plugin artifact fetch/cache；
-- persistence；
-- transport/sync；
-- Entity secret-key storage / signer；
-- packer authorization；
-- canonical-chain policy；
-- runtime sandbox/capability policy；
-- deployment/observability。
-
-Core Plugins 只规定 host-agnostic deterministic behavior 与显式验证输入。
-
-## Foundation design gate
-
-旧 `blockchain-service` 的当前可见材料不能证明普通 Record 的 signing payload；这一点现在作为历史 source gap 保留在 `source-baseline.md`，不再让当前 Core 无限等待不可恢复的旧语义。
-
-`core.record@0.1.0` 已通过上述 domain-separated RecordId signing contract 显式定义新的版本化行为。
-
-因此当前 foundation 的核心设计 blocker 已全部解决：
-
-- Plugin artifact identity / runtime lock；
-- Genesis identity；
-- ordinary Block identity/linkage；
-- ordinary Record signature payload。
-
-该签名决策已经投影到 `spec/core-record.md`。当前剩余 gate 只是 docs/spec 最终一致性审查；审查通过后进入具体 Core Plugin implementation。
+这条纪律用于防止 Core 从最小确证内核重新膨胀成业务框架。

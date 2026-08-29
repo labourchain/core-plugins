@@ -1,229 +1,188 @@
 # Plugin Model
 
-本文定义 LabourChain 当前 Plugin 模型：Plugin 是什么、链上保存什么、如何形成稳定 identity、如何发布、如何被 runner 加载，以及源码和贡献历史如何追溯。
+本文定义 LabourChain 当前 Plugin 数据模型与运行时验证边界。设计迁移以旧 `blockchain-service` 的实际代码为基准；只有为了把 schema-only `Protocol` 演化为 executable Plugin 所必需的部分才在 Core 中新增。
 
-旧 `blockchain-service` 中的 `Protocol` 数据结构和 hash 行为属于历史事实，见 [`source-baseline.md`](source-baseline.md)。当前设计不继续维护一个与 Plugin 并列的 Protocol 实体。
+历史事实依据见 [`source-baseline.md`](source-baseline.md)。
 
-## Current Design：Plugin 是链上不可变可执行包
+## 源代码基线
 
-Plugin 同时包含数据约束和确定性行为：
-
-```text
-Plugin
-├── schema / public types
-├── deterministic executable functions
-├── runtime manifest
-└── executable artifact content
-```
-
-它在能力上等价于 Smart Contract，但采用普通 package/plugin 的版本发布模型。
-
-Plugin 以名称和版本发布，例如：
+旧 Service 中 `Protocol` 是普通 Record 的一种 `data`：
 
 ```text
-core.block@0.1.0
-repo.asset@0.2.1
+Record
+├── protocol = sys.protocol:version
+├── protocolHash
+├── createdBy
+├── createdAt
+└── data = Protocol
 ```
 
-一个已经发布的 Plugin release 不原地修改。内容变化通过新的版本或显式的后续 patch 事实表达；历史 release 始终可按其 `PluginHash` 精确取回。
+Genesis 脚本同样把每个系统 `Protocol` 放入 `Record.data`，再把这些 Records 放入 Genesis Block。
 
-当前 Core 基础插件是：
+当前迁移保持这个结构：
+
+```text
+Record
+├── plugin = core.plugin@version
+├── pluginHash = 解释该 Record 的 core.plugin identity
+├── createdBy
+├── createdAt
+└── data = Plugin
+```
+
+`core.plugin` 不建立第二套 `PluginRelease` 数据类型，也不负责发行、权限、SDK 或网络生命周期。
+
+## Plugin 数据
+
+旧 `Protocol` 主要描述 schema；当前 `Plugin` 在此基础上增加可执行 runtime 与完整 artifact identity。
+
+```mermaid
+flowchart TB
+    P["Plugin"]
+    P --> N["name / version"]
+    P --> S["schema"]
+    P --> R["runtime"]
+    P --> D["dependencies"]
+    P --> F["files"]
+
+    P --> V["core.plugin runtime validation"]
+    V --> VP["validatePlugin"]
+    V --> CP["canonicalPlugin"]
+    V --> PH["pluginHash"]
+    V --> VA["verifyArtifact"]
+```
+
+第一版公共数据结构等价于：
+
+```ts
+interface Plugin {
+  name: string
+  version: string
+  runtime: {
+    kind: 'js-esm'
+    abi: number
+    entry: string
+  }
+  schema: string
+  dependencies: PluginDependency[]
+  files: PluginFile[]
+}
+
+interface PluginDependency {
+  name: string
+  version: string
+  pluginHash: PluginHash
+}
+
+interface PluginFile {
+  path: string
+  size: number
+  hash: FileHash
+}
+```
+
+### 从 Protocol 到 Plugin
+
+| 旧 Protocol | 当前 Plugin | 迁移处理 |
+| --- | --- | --- |
+| `protocolId` | `name` | 保留语义，改为 dotted namespace |
+| `version` | `version` | 保留，明确 exact SemVer 2.0.0 |
+| `schema` inline CUE | `schema` artifact path | 保留 schema 语义，改由 artifact file 承载 |
+| `package` | 删除 | schema/runtime 文件自身承载相关 module/package 信息 |
+| `contributors` | 删除 | 属于 Record / Repo / Labour provenance |
+| `description` | 删除 | 不属于运行时有效性 |
+| 无 | `runtime` | executable Plugin 必需新增 |
+| 无 | `dependencies` | chain Plugin runtime dependency 必需新增 |
+| 无 | `files` | executable artifact identity 必需新增 |
+
+`contributors`、源码地址、build inputs、release notes 等仍可由更高层事实表达，但不进入 Plugin runtime identity。
+
+## Name 与 version
+
+Plugin name 使用 lowercase dotted namespace：
+
+```regex
+^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$
+```
+
+例如：
 
 ```text
 core.plugin
 core.record
-core.entity
-core.block
-```
-
-其中 `core.plugin` 定义普通 Plugin release 如何进入链状态。
-
-## Current Design：运行对象是 artifact，不是 source checkout
-
-链上真正被 runner 执行的是构建完成的 Plugin artifact，而不是 source checkout。
-
-概念路径：
-
-```text
-source Repository
-  -> build
-  -> executable Plugin artifact
-  -> canonical artifact identity
-  -> PluginHash
-```
-
-runner 加载 Plugin 时：
-
-```text
-fetch artifact by PluginHash
-  -> verify artifact
-  -> resolve exact chain-plugin dependencies
-  -> check runtime ABI
-  -> load declared entry
-  -> execute
-```
-
-runner 不为了执行已经发布的 Plugin 再：
-
-```text
-clone source repository
-resolve npm/pnpm semver ranges
-install dependency tree
-run postinstall
-compile TypeScript
-bundle source
-```
-
-这些步骤属于 release 前的 build/provenance，而不是链执行路径。
-
-## Current Design：artifact logical contents
-
-Plugin artifact 是一个逻辑文件树，而不是某一种 tar/zip/gzip 文件格式。
-
-第一版 artifact 包含至少：
-
-```text
-canonical manifest
-schema / public runtime metadata
-compiled or bundled runtime code
-runtime-required static resources
-```
-
-不要求包含：
-
-```text
-TypeScript/source authoring tree
-README
-unit tests
-Git history
-package-manager source lockfile
-compiler/bundler configuration
-```
-
-这些属于 Repository build provenance。
-
-artifact 可以为了网络或存储被打包、压缩或拆分保存，但 archive/compression representation 不参与 `PluginHash`。同一 logical artifact 无论通过 gzip、zstd、object storage 或其他 transport 传递，只要 canonical manifest 和被其承诺的文件 bytes 相同，就具有同一个 `PluginHash`。
-
-## Current Design：Artifact Manifest
-
-每个 Plugin artifact 必须有一个 canonical manifest。第一版逻辑结构为：
-
-```text
-PluginManifest
-├── name
-├── version
-├── runtime
-│   ├── kind
-│   ├── abi
-│   └── entry
-├── schema
-├── dependencies[]
-└── files[]
-```
-
-概念示例：
-
-```json
-{
-  "name":"core.block",
-  "version":"0.1.0",
-  "runtime":{"kind":"js-esm","abi":1,"entry":"runtime.mjs"},
-  "schema":"schema.cue",
-  "dependencies":[
-    {"name":"core.entity","version":"0.1.0","pluginHash":"..."}
-  ],
-  "files":[
-    {"path":"runtime.mjs","size":12345,"hash":"..."},
-    {"path":"schema.cue","size":678,"hash":"..."}
-  ]
-}
-```
-
-这里的 JSON 只是 manifest 的链上/交换表示。canonical bytes 由本文后述规则固定。
-
-### `name`
-
-Plugin 的稳定名称，例如：
-
-```text
-core.block
 repo.asset
+work.labour
 ```
 
-### `version`
-
-该 release 的语义版本，例如：
+Plugin version 使用 exact SemVer 2.0.0：
 
 ```text
 0.1.0
+1.2.3-alpha.1
+1.2.3+build.7
 ```
 
-`name@version` 是人类可读 release reference；真正精确的内容 identity 是 `PluginHash`。
-
-### `runtime`
-
-第一版 runtime descriptor 包含：
-
-```text
-kind
-abi
-entry
-```
-
-其中：
-
-```text
-kind = js-esm
-```
-
-表示 artifact 入口是 JavaScript ESM runtime artifact。
-
-`abi` 是 LabourChain Plugin runner ABI 版本，不是 Node.js patch/minor version。runner 必须明确声明自己支持哪些 ABI version；Plugin 不把某个 Cordis server 实现或具体 Node 安装路径写进 identity。
-
-`entry` 是 artifact 内的 runtime entry path。
-
-### `schema`
-
-`schema` 指向 artifact 内用于该 Plugin 数据约束/public runtime metadata 的 canonical schema 文件。
-
-第一版 Core 继续使用 CUE schema 时，该路径通常可以是：
-
-```text
-schema.cue
-```
-
-### `dependencies[]`
-
-这里只声明**运行期仍然作为独立链 Plugin 存在的依赖**。
-
-每项必须精确包含：
-
-```text
-name
-version
-pluginHash
-```
-
-不允许：
+不接受 range、tag 或 workspace reference：
 
 ```text
 ^1.2.0
 >=1 <2
 latest
 workspace:*
+v1.2.0
 ```
 
-或任何需要 runner 再执行版本解析的 floating range。
+`name@version` 是可读引用；精确 executable identity 始终是 `PluginHash`。
 
-真正权威的是 `pluginHash`；`name` 与 `version` 用于可读性、状态解析和一致性检查。
+## Runtime
 
-第一版同一个 manifest 中 dependency `name` 必须唯一。如果某段第三方代码需要并存多个普通 package version，应在 build 时 bundle/vendor 到 artifact，而不是把普通 package dependency 暴露成链 Plugin dependency。
+第一版 runtime descriptor：
 
-### `files[]`
+```text
+kind = js-esm
+abi = positive safe integer
+entry = canonical artifact path
+```
 
-`files[]` 承诺 artifact 所有参与运行或 schema/public metadata 的文件。
+`kind` 表示 artifact 的加载格式；`entry` 指向 artifact 内实际执行入口；`abi` 标识 LabourChain Plugin runner ABI。
 
-每项固定包含：
+ABI 不描述 Node.js 版本、Cordis server 版本、部署路径、sandbox 或进程生命周期。这些属于 runner/runtime。
+
+## Schema
+
+旧 Protocol 直接把 canonicalized CUE schema 文本放入数据并参与 ProtocolHash。
+
+当前 `schema` 是 artifact 内的 canonical path，例如：
+
+```text
+schema.cue
+```
+
+schema raw bytes 由对应 `files[]` 的 `FileHash` 承诺。因此当前 identity 与旧 ProtocolHash 有一个明确变化：schema 的空格、注释或换行只要改变 raw bytes，就会改变 FileHash 与 PluginHash。
+
+这是从 schema descriptor 迁移到 exact executable artifact identity 的显式设计变化。
+
+## Dependencies
+
+`dependencies[]` 只描述运行时仍然作为独立链 Plugin 存在的依赖：
+
+```text
+name
+version
+pluginHash
+```
+
+`pluginHash` 是权威 identity；`name/version` 用于可读性与一致性检查。
+
+普通 npm/pnpm/build dependency 不属于这里。一个 Plugin artifact 在运行时应当自包含，除非依赖已经在 `dependencies[]` 中以 exact PluginHash 声明。
+
+同一个 Plugin 中 dependency name 必须唯一。
+
+`dependencies[]` 的输入顺序没有语义。canonicalization 时由 `core.plugin` 按 dependency `name` 的 UTF-8 lexicographical ascending order 自动排序。
+
+## Files
+
+`files[]` 描述参与 Plugin runtime/schema identity 的完整逻辑文件集合：
 
 ```text
 path
@@ -233,319 +192,114 @@ hash
 
 其中：
 
-- `path` 是 canonical relative path；
-- `size` 是 raw file bytes 长度；
-- `hash = DoubleSHA256(raw file bytes)`；
-- `hash` 使用 lowercase hexadecimal digest representation，不使用 Base58。
-
-manifest 自身不是 `files[]` 中的文件；它是计算 `PluginHash` 的 canonical root metadata，因此不存在 manifest 自引用 hash。
-
-## Current Design：canonical path rules
-
-artifact path 使用 UTF-8、case-sensitive、POSIX `/` 分隔形式。
-
-必须拒绝：
-
-```text
-absolute path
-empty path
-. segment
-.. segment
-backslash separator
-NUL
-重复 canonical path
-```
-
-也就是说：
-
-```text
-runtime.mjs
-schema.cue
-assets/table.bin
-```
-
-是正常路径，而宿主 OS 的 filesystem path normalization 不得改变 Plugin identity。
-
-## Current Design：file hashing
-
-每个 artifact file 先独立形成内容 digest：
-
 ```text
 FileHash = DoubleSHA256(raw file bytes)
 ```
 
-serialized form：
+- `path` 是 UTF-8、case-sensitive、relative POSIX path；
+- `size` 是 non-negative safe integer，`-0` 非法；
+- `hash` 是 64-character lowercase hexadecimal FileHash。
+
+拒绝 absolute path、空 path、`.` / `..` segment、反斜杠、NUL、lone surrogate / invalid Unicode。
+
+file path 必须唯一。`files[]` 的输入顺序同样没有语义；canonicalization 时按 canonical path 的 UTF-8 lexicographical ascending order自动排序。
+
+manifest/archive 本身不是 `files[]` 项，避免自引用 hash。tar/zip/gzip、mtime、uid/gid、filesystem mode、compression metadata 都不属于 Plugin identity。
+
+## Canonical Plugin 与 PluginHash
+
+对象字段顺序不属于 identity。第一版 canonical bytes 使用 RFC 8785 JSON Canonicalization Scheme（JCS）。
 
 ```text
-64-char lowercase hexadecimal
+Plugin input
+  -> validate shape / values / uniqueness
+  -> sort dependencies[] by name
+  -> sort files[] by path
+  -> RFC 8785 JCS
+  -> UTF-8 bytes
 ```
 
-因此 runner 可以流式下载/验证单个文件，而不需要先还原某种特定 archive bytes。
-
-`size` 与 `hash` 都必须匹配实际 raw bytes。
-
-## Current Design：canonical manifest
-
-`PluginHash` 不直接 hash tar/zip/gzip bytes，而是 hash canonical manifest bytes。
-
-canonical manifest 使用 compact UTF-8 JSON，字段顺序固定为：
+JCS 递归 canonicalize object properties，不重新排序 array；因此两个 set-like arrays 的排序由 Plugin 规则在 JCS 前完成。
 
 ```text
-name
-version
-runtime
-schema
-dependencies
-files
+PluginHash = DoubleSHA256(canonical Plugin bytes)
 ```
 
-`runtime` 内字段顺序固定为：
+serialized form 为 64-character lowercase hexadecimal。
+
+PluginHash 直接承诺：
 
 ```text
-kind
-abi
-entry
-```
-
-每个 dependency 字段顺序固定为：
-
-```text
-name
-version
-pluginHash
-```
-
-`dependencies[]` 按：
-
-```text
-name
-```
-
-UTF-8 lexicographical ascending 排序；dependency name 必须唯一。
-
-每个 file descriptor 字段顺序固定为：
-
-```text
-path
-size
-hash
-```
-
-`files[]` 按 canonical `path` 的 UTF-8 lexicographical ascending 排序；path 必须唯一。
-
-canonical JSON 不包含：
-
-```text
-pretty-print whitespace
-comments
-unknown fields
-host timestamps
-uid/gid
-filesystem mode
-archive metadata
-compression metadata
-```
-
-实现必须显式构造 canonical manifest bytes，不能依赖普通对象序列化时碰巧保持当前属性顺序。
-
-## Current Design：PluginHash
-
-`PluginHash` 是完整 executable artifact 的稳定 content identity。
-
-```text
-PluginHash = DoubleSHA256(canonical PluginManifest bytes)
-```
-
-serialized form：
-
-```text
-64-char lowercase hexadecimal
-```
-
-虽然 `PluginHash` 直接 hash 的是 manifest，但 manifest 中每一个 runtime file 都通过 exact `size + FileHash` 被承诺，因此 `PluginHash` transitively commits to every runtime-relevant artifact byte。
-
-任何以下变化都必须改变 `PluginHash`：
-
-```text
-name/version
-runtime kind/ABI/entry
+name / version
+runtime descriptor
 schema path
-exact chain-plugin dependency
-runtime code bytes
-schema bytes
-runtime resource bytes
-file path
-file size
+exact Plugin dependencies
+file paths
+file sizes
+FileHash values
 ```
 
-compression level、archive timestamp 或 transport representation 不改变 `PluginHash`。
+而每个 FileHash 又承诺 raw file bytes，因此 PluginHash transitively commits to exact executable artifact content。
 
-## Current Design：runtime lock
+## Runtime verification
 
-LabourChain runtime lock 比普通 package-manager lock 更严格，但范围更小。
-
-第一版固定为：
-
-1. artifact 自身由 exact `PluginHash` 锁定；
-2. 每个 runtime file 由 `FileHash` 锁定；
-3. 普通 npm/pnpm dependencies 必须在 build 时 bundle/vendor 进 artifact；
-4. runner 不执行普通 package-manager dependency resolution；
-5. 外部链 Plugin dependency 必须按 exact `PluginHash` 锁定；
-6. runner compatibility 由 versioned Plugin ABI 锁定；
-7. runner 在执行前必须验证 manifest、文件和 dependency identity。
-
-因此链上的 runtime lock 不需要复制一整份 `pnpm-lock.yaml` / `package-lock.json`。
-
-传统 lockfile 解决 source build dependency resolution；Plugin artifact 已经是 resolution/build 后的最终执行产物。
-
-## Current Design：build lock / provenance
-
-package-manager lockfile 仍然非常重要，但属于 Repository build provenance。
-
-一个可审计 build 可以沿 Asset/Labour graph 保存：
+`core.plugin` 第一版只需要围绕 Plugin 数据提供确定性运行时能力：
 
 ```text
-source/commit Assets
-package-manager lockfile Asset
-build config Assets
-package manager + exact version
-compiler/bundler + exact version
-runtime/toolchain metadata
-build command
-build Labour Record
-produced Plugin artifact Asset
-expected PluginHash
+validatePlugin(plugin)
+canonicalPlugin(plugin)
+fileHash(bytes)
+pluginHash(plugin)
+verifyArtifact(plugin, files, expectedPluginHash?)
 ```
 
-这允许后续验证：
+`verifyArtifact()` 至少检查：
+
+1. Plugin shape、name、version、runtime、schema、dependency/file descriptors；
+2. dependency name 与 file path uniqueness；
+3. canonical paths、Unicode 与 safe integer 约束；
+4. `runtime.entry` 与 `schema` 均存在于 `files[]`；
+5. caller 提供的实际 file set 与声明完全相同；
+6. 每个 file 的 byte length 与 FileHash；
+7. canonical Plugin bytes 与 derived PluginHash；
+8. 如果 caller 给出 `expectedPluginHash`，要求完全一致。
+
+`core.plugin` 不负责下载、缓存、持久化 artifact，也不负责 package-manager resolution。caller/runner 提供待验证的 Plugin 数据与实际 file bytes。
+
+## Record 与 Block 边界
+
+Plugin 如何成为链上事实由通用 Record/Block 结构表达：
+
+```mermaid
+flowchart TB
+    P["Plugin data"]
+    P --> R["Record.data"]
+    R --> B["Block.records[]"]
+    B --> C["chain confirmation"]
+```
+
+`core.plugin` 到验证 Plugin 数据与 artifact identity 为止。
+
+以下问题不属于 `core.plugin`：
 
 ```text
-same recorded build inputs
-  -> rebuild
-  -> produced artifact
-  -> PluginHash == recorded PluginHash ?
+谁可以创建 Plugin Record
+Repository / Member 业务身份
+Plugin Record 何时可以被其他 Record 引用
+版本推荐 / deprecated / abandoned
+packer 或 network policy
+Core distribution / profile
+artifact fetch/cache/storage
+source/build provenance
+SDK / CLI / package publishing
 ```
 
-但第一版不要求一个 Plugin release 必须先证明 bit-for-bit reproducible build 才能被链接受。
+这些问题应在对应的 Record/Block ordering、network/runtime 或业务 package 中分别定义，而不是让 `core.plugin` 形成第二套状态机。
 
-Core 的执行信任边界是：
+## Genesis 边界
 
-> runner 执行的 artifact 是否与链确证的 `PluginHash` 完全一致。
+旧 Service 已经证明 Genesis 仍然是一个 Block，系统 Protocol 也是其中的 Records。
 
-source → build → same artifact 是更高层的 provenance / supply-chain / labour audit 能力。
+当前迁移继续采用同一结构原则：初始 Plugin 通过 `Record.data = Plugin` 出现在 Genesis Block 中，而不是另建 `S0 Plugin artifact set` 或 issuer-less Plugin release channel。
 
-## Current Design：普通 Plugin release 由 Repository 发行
-
-普通 Plugin 的 issuer/releaser 是 Repository。
-
-Plugin release 通过普通 Record 进入链时：
-
-```text
-Record.createdBy = Repository public key
-```
-
-这里的 public key 是 Repository 作为 Entity 的 Base58 public-key identity。
-
-`BlockHeader.packer` 不是 Plugin issuer。packer 只证明某个 Entity key 对 Block confirmation 做了签名；Plugin release identity 来自 release Record 的 Repository author。
-
-普通 release 至少需要能够确定：
-
-```text
-name
-version
-PluginHash
-artifact Asset
-```
-
-exact release Record shape 由 `core.plugin` spec 与 Repo/Asset plugin 的组合边界继续投影；Core 不在 Plugin manifest 中重复写 source repository URL。
-
-## Current Design：source 与贡献历史沿 Repository / Asset graph 追溯
-
-Plugin artifact 本身属于 Asset。
-
-从 release Record 可以沿链恢复 provenance：
-
-```text
-Plugin release Record
-  -> createdBy Repository public key
-  -> Repository
-  -> Plugin artifact Asset
-  -> source/build/commit Assets
-  -> Labour Records
-  -> contribution / version DAG
-```
-
-因此 Plugin manifest/declaration 不包含：
-
-```text
-sourceRepo
-Git URL
-source commit URL
-contributors copied from repository
-```
-
-源码在哪里、由哪些劳动和 commits 构建出来，应通过 Repository 所管理的 Asset / Labour graph 追溯。
-
-Plugin artifact Asset 的内容 identity 与 `PluginHash` 必须一致或具有由对应 Asset plugin 明确定义的一一映射。
-
-Genesis 初始 Core Plugins 是唯一 bootstrap 例外：它们在 Repository 和普通 Plugin release 规则成立之前直接存在，因此不要求一个预先存在的 issuing Repository。
-
-## Current Design：版本与不可变性
-
-Plugin 名称和版本用于人类和依赖声明；`PluginHash` 用于精确内容寻址。
-
-普通 release 的解析结果必须最终固定到 exact PluginHash：
-
-```text
-PluginRef
-  name@version
-      |
-      v
-exact PluginHash
-```
-
-同一个 issuer 下，同一个 `name@version` 不得在链状态中被重新绑定到另一份 `PluginHash`。
-
-更新必须形成新的不可变链事实：
-
-```text
-new semantic version
-or explicit later patch/version fact
-```
-
-旧 artifact 与旧 PluginHash 始终可取回。
-
-## Current Design：runner verification
-
-runner 在加载一个 Plugin artifact 前至少执行：
-
-1. parse manifest；
-2. 拒绝 unknown/noncanonical manifest shape；
-3. canonicalize manifest；
-4. 计算并匹配 `PluginHash`；
-5. 检查 `files[]` path uniqueness/order；
-6. 对每个 file 检查 byte size 与 `FileHash`；
-7. 检查 `runtime.entry` 与 `schema` 都存在于 `files[]`；
-8. 检查 runner 支持 manifest 声明的 runtime kind / ABI；
-9. 按 exact `PluginHash` 解析所有 chain-plugin dependencies；
-10. 只有全部成功后才加载 runtime entry。
-
-runner 不因为 `name@version` 看起来匹配就跳过 PluginHash verification。
-
-## Resolved design：Executable Plugin identity
-
-旧 `ProtocolHash` 只承诺 descriptor/schema，无法证明不同节点执行相同函数实现。
-
-当前模型用：
-
-```text
-PluginHash
-= DoubleSHA256(canonical manifest)
-= transitive commitment to executable artifact bytes
-```
-
-直接作为 executable Plugin implementation identity。
-
-因此“不同 runner 如何确认自己执行的是同一个 Plugin 实现”这一问题在 Plugin artifact 层已经解决。
-
-剩余需要由独立 runner/server 工程继续定义的是 ABI 的宿主实现、sandbox/capability policy 与实际加载机制，而不是 Plugin identity 本身。
+Genesis 中 RecordId、签名、Header 等具体 bootstrap 特例仍需在 `core.record` / `core.block` / Genesis 的独立审查中根据源代码逐项决定；`core.plugin` 不定义这些特例。

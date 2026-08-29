@@ -1,6 +1,10 @@
 # `core.record` Specification
 
-Status: defined for the current `core.record@0.1.0` Record envelope, RecordId, author signature, active-Plugin resolution, and payload validation.
+Status: **pending source-aligned review before implementation**.
+
+The Record envelope, historical RecordId behavior, and previously selected ordinary Record signing contract remain review inputs. However, the sections below that assume `activePluginState`, N→N+1 Plugin activation, same-Block Plugin rejection, Repository-issued Plugin releases, or standalone Genesis/S0 bootstrap belong to the superseded Plugin-state design and are **not normative implementation requirements**.
+
+Until the dedicated `core.record` review is complete, issue #7 is the implementation gate. Do not implement the superseded Plugin-availability assumptions from this document.
 
 ## Source
 
@@ -110,7 +114,7 @@ base58btcDecode(createdBy).length == 32 bytes
 
 This Base58 rule applies because `createdBy` is an Entity identity reference. It does not apply to `id`, `pluginHash`, or `signature`.
 
-Different Record types may assign different business meaning to the author Entity. In particular, ordinary `core.plugin` release Records require `createdBy` to resolve to a Repository public key.
+Different Record types may assign different business meaning to the author Entity. Any earlier statement that `core.plugin` Records must resolve `createdBy` as a Repository issuer is superseded and must be reconsidered outside `core.plugin`.
 
 ## Record signing payload
 
@@ -197,30 +201,36 @@ The decoded public key must be exactly 32 bytes and the decoded signature exactl
 
 Because `signature` is not part of RawRecord, changing only the signature does not change RecordId. It does make author confirmation invalid unless the replacement signature also verifies for the same `createdBy` and signing payload.
 
-Genesis initial Plugin artifacts do not use this ordinary Record signing path.
+Genesis bootstrap signature behavior is pending the dedicated source review; do not assume Genesis Plugin data bypasses Record solely because it is Plugin data.
 
-## Active Plugin resolution
+## Plugin resolution — pending review
 
-An ordinary Record is interpreted only against a Plugin active before its containing Block begins.
-
-The Record's:
+A Record carries:
 
 ```text
 plugin = name@version
 pluginHash
 ```
 
-must resolve to the same exact active Plugin release.
+and must ultimately be interpreted by that exact Plugin identity.
 
-A Plugin released earlier in the same ordinary Block is not active for this purpose.
+How the validator locates eligible Plugin Records at a given Block position is **not frozen** in this spec. In particular, do not assume before review:
 
-Genesis initial Plugins are outside ordinary Record validation and are loaded through `spec/genesis.md`.
+```text
+activePluginState
+pre-Block-only Plugin snapshot
+same-Block Plugin Record rejection
+N -> N+1 activation
+standalone Genesis S0
+```
+
+These semantics must be decided from the source-aligned Record/Block review.
 
 ## Payload validation
 
-After the referenced Plugin is resolved, `data` must satisfy that Plugin's schema/public types and deterministic validation behavior.
+After the exact referenced Plugin is resolved under the reviewed Record/Block rules, `data` must satisfy that Plugin's schema/public types and deterministic validation behavior.
 
-`core.record` handles the common Record envelope and dispatches Plugin-specific payload validation to the exact active Plugin identified by `pluginHash`.
+`core.record` handles the common Record envelope and dispatches Plugin-specific payload validation to the exact Plugin identified by `pluginHash`.
 
 A domain Plugin may define references to Records, Assets, Projects, Repositories, or external objects. Those relations remain part of that Plugin's payload semantics. `core.record` does not assign a generic dependency meaning to them.
 
@@ -232,33 +242,22 @@ A domain Plugin may define references to Records, Assets, Projects, Repositories
 64-char lowercase hexadecimal DoubleSHA256 digest
 ```
 
-and must resolve to the exact active Plugin artifact whose manifest `name@version` equals the Record's `plugin` field.
+and must identify the exact Plugin whose `name@version` equals the Record's `plugin` field.
 
 A matching Plugin name/version with a different PluginHash is not sufficient.
 
-## Required deterministic capabilities
+## Required deterministic capabilities — pending final review
 
-The `core.record` runtime must provide equivalent deterministic capabilities for:
+Candidate runtime capabilities are:
 
 ```text
 recordId(rawRecord)
 signingPayload(recordId)
 verifySignature(record)
-verifyRecord(record, activePluginState, pluginResolver)
+verifyRecord(record, pluginResolver)
 ```
 
-Exact TypeScript function names may differ if the public Plugin ABI uses a different naming convention, but the behavior must remain separately testable.
-
-`verifyRecord` must cover at least:
-
-1. common Record shape/encoding validation;
-2. RecordId recomputation and equality;
-3. `createdBy` Entity public-key validation;
-4. signature decoding and Ed25519 verification;
-5. exact active `plugin` + `pluginHash` resolution;
-6. deterministic payload validation under that exact Plugin.
-
-Repository issuer authorization, packer authorization, persistence, network arrival, and canonical-chain selection do not belong to this primitive unless explicitly supplied by another Plugin/composition layer.
+The exact `verifyRecord` resolver/state shape remains pending the dedicated Record/Block availability review and must not expose the removed `activePluginState` API by assumption.
 
 ## Business relation boundary
 
@@ -268,47 +267,18 @@ Core must not infer business relations from timestamps, Block position, Record a
 
 ## Failure cases
 
-An ordinary Record must be rejected when at least one of the following holds:
-
-- `id` is not 64-character lowercase hexadecimal;
-- recomputed RecordId differs from `id`;
-- `plugin` is not a valid exact `name@version` reference;
-- `pluginHash` is malformed;
-- `createdBy` is malformed base58btc or does not decode to a 32-byte Ed25519 public key;
-- `signature` is not exactly 128-character lowercase hexadecimal or does not decode to 64 bytes;
-- Ed25519 verification over the exact domain-separated RecordId payload fails;
-- its exact Plugin is not active before the containing Block;
-- `plugin` and `pluginHash` resolve inconsistently;
-- payload validation under the exact Plugin fails.
+Subject to the pending Plugin-resolution review, an ordinary Record must reject malformed common identity/signature representations, mismatched derived RecordId, invalid author signature, inconsistent `plugin` / `pluginHash`, and payload validation failure.
 
 There is no generic Core failure condition for Labour/Asset DAG topology or dependency ordering.
 
+Do not treat “Plugin is not active in pre-Block state” as a frozen failure case until the Record/Block review approves such a state model.
+
 ## Tests
 
-Meaningful tests must cover:
+The eventual Record tests should protect source-derived RecordId behavior, the approved signing contract, Entity/signature encodings, exact Plugin identity consistency, and payload validation.
 
-- historical/current equivalent RecordId compatibility fixture;
-- Record mutation changing the derived RecordId;
-- signature mutation not changing RecordId but failing signature verification;
-- RecordId remaining a DoubleSHA256 digest rather than Base58 identity;
-- exact signing payload bytes: UTF-8 domain prefix followed by the 32 decoded RecordId bytes;
-- a fixed Ed25519 valid signature vector for the Record signing domain;
-- valid signature rejected when verified under a different author public key;
-- valid signature rejected when Record content changes and the RecordId is recomputed or mismatches;
-- malformed/uppercase/wrong-length RecordId rejection;
-- malformed/uppercase/wrong-length signature rejection;
-- valid/invalid base58btc `createdBy` Entity references;
-- exact `plugin` + `pluginHash` resolution;
-- same name/version with wrong PluginHash rejection;
-- inactive Plugin reference rejection;
-- Plugin released in the same Block remaining unavailable for Record validation;
-- active Plugin payload validation success/failure;
-- business-reference fields acquiring no implicit Core ordering semantics.
-
-Do not add separate tests merely to increase coverage when they do not protect an independent Record contract or regression.
+Do not add same-Block Plugin rejection, N→N+1 activation, activePluginState, or S0 tests before the corresponding review approves those semantics.
 
 ## Resolved source gap
 
-The historical repository does not establish ordinary Record signing bytes. `core.record@0.1.0` intentionally resolves that gap with the versioned domain-separated RecordId signing contract above.
-
-If additional historical documentation is recovered later, record it as Source Fact and compare it with this current contract; do not silently rewrite the already-versioned `core.record@0.1.0` behavior.
+The historical repository does not establish ordinary Record signing bytes. The current domain-separated RecordId signing contract remains a previously selected current-model decision, but Genesis/bootstrap interaction with it must still be reviewed against source.
