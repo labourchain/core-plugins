@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 export type FileHash = string
 export type PluginHash = string
+export type PluginArtifact = Readonly<Record<string, string>>
 
 export interface PluginRuntime {
   kind: 'js-esm'
@@ -28,11 +29,14 @@ export interface Plugin {
   schema: string
   dependencies: PluginDependency[]
   files: PluginFile[]
+  artifact?: PluginArtifact
 }
 
 const DIGEST_RE = /^[0-9a-f]{64}$/
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/
 const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u
+const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u
+const PLUGIN_KEYS = ['name', 'version', 'runtime', 'schema', 'dependencies', 'files'] as const
 
 export class PluginArtifactError extends Error {
   constructor(message: string) {
@@ -43,6 +47,10 @@ export class PluginArtifactError extends Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
 }
 
 function assertExactKeys(
@@ -127,6 +135,18 @@ function assertCanonicalArtifactPath(path: unknown, label = 'path'): asserts pat
   }
 }
 
+function decodeCanonicalBase64(value: unknown, label: string): Uint8Array {
+  if (typeof value !== 'string' || !BASE64_RE.test(value)) {
+    throw new PluginArtifactError(`${label} must be canonical RFC 4648 Base64`)
+  }
+
+  const bytes = Buffer.from(value, 'base64')
+  if (bytes.toString('base64') !== value) {
+    throw new PluginArtifactError(`${label} must be canonical RFC 4648 Base64`)
+  }
+  return bytes
+}
+
 function parseRuntime(value: unknown): PluginRuntime {
   if (!isRecord(value)) {
     throw new PluginArtifactError('runtime must be an object')
@@ -186,11 +206,50 @@ function parseFile(value: unknown, index: number): PluginFile {
   }
 }
 
+function parseEmbeddedArtifact(value: unknown, files: readonly PluginFile[]): PluginArtifact {
+  if (!isRecord(value)) {
+    throw new PluginArtifactError('plugin.artifact must be an object')
+  }
+
+  const declared = new Map(files.map((file) => [file.path, file] as const))
+  const actualPaths = Object.keys(value)
+  if (actualPaths.length !== declared.size) {
+    throw new PluginArtifactError('plugin.artifact file set does not exactly match plugin.files')
+  }
+
+  for (const path of actualPaths) {
+    assertCanonicalArtifactPath(path, `plugin.artifact path ${JSON.stringify(path)}`)
+    if (!declared.has(path)) {
+      throw new PluginArtifactError(`plugin.artifact contains undeclared file: ${path}`)
+    }
+  }
+
+  const normalizedEntries: Array<readonly [string, string]> = []
+  for (const descriptor of files) {
+    if (!hasOwn(value, descriptor.path)) {
+      throw new PluginArtifactError(`plugin.artifact is missing declared file: ${descriptor.path}`)
+    }
+    const encoded = value[descriptor.path]
+    const bytes = decodeCanonicalBase64(encoded, `plugin.artifact[${JSON.stringify(descriptor.path)}]`)
+    if (bytes.byteLength !== descriptor.size) {
+      throw new PluginArtifactError(`plugin.artifact file size mismatch: ${descriptor.path}`)
+    }
+    if (fileHash(bytes) !== descriptor.hash) {
+      throw new PluginArtifactError(`plugin.artifact file hash mismatch: ${descriptor.path}`)
+    }
+    normalizedEntries.push([descriptor.path, encoded as string])
+  }
+
+  return Object.fromEntries(normalizedEntries)
+}
+
 export function validatePlugin(value: unknown): Plugin {
   if (!isRecord(value)) {
     throw new PluginArtifactError('plugin must be an object')
   }
-  assertExactKeys(value, ['name', 'version', 'runtime', 'schema', 'dependencies', 'files'], 'plugin')
+
+  const hasArtifact = hasOwn(value, 'artifact')
+  assertExactKeys(value, hasArtifact ? [...PLUGIN_KEYS, 'artifact'] : PLUGIN_KEYS, 'plugin')
 
   assertPluginName(value.name, 'plugin.name')
   assertExactVersion(value.version, 'plugin.version')
@@ -227,7 +286,7 @@ export function validatePlugin(value: unknown): Plugin {
     throw new PluginArtifactError('plugin.schema must exist in plugin.files')
   }
 
-  return {
+  const plugin: Plugin = {
     name: value.name,
     version: value.version,
     runtime,
@@ -235,6 +294,12 @@ export function validatePlugin(value: unknown): Plugin {
     dependencies,
     files,
   }
+
+  if (hasArtifact) {
+    plugin.artifact = parseEmbeddedArtifact(value.artifact, files)
+  }
+
+  return plugin
 }
 
 function compareUtf16(left: string, right: string): number {
@@ -278,8 +343,13 @@ function serializeJcs(value: unknown): string {
   throw new PluginArtifactError('plugin contains a value that cannot be represented by JCS')
 }
 
+function pluginIdentity(value: Plugin): Omit<Plugin, 'artifact'> {
+  const { artifact: _artifact, ...identity } = value
+  return identity
+}
+
 export function canonicalPlugin(plugin: unknown): Uint8Array {
-  return Buffer.from(serializeJcs(validatePlugin(plugin)), 'utf8')
+  return Buffer.from(serializeJcs(pluginIdentity(validatePlugin(plugin))), 'utf8')
 }
 
 function doubleSha256(bytes: Uint8Array): Uint8Array {
@@ -316,24 +386,23 @@ function normalizeArtifactFiles(
   return result
 }
 
-export function verifyArtifact(
-  plugin: unknown,
-  inputFiles: ReadonlyMap<string, Uint8Array> | Readonly<Record<string, Uint8Array>>,
+function verifyArtifactFiles(
+  plugin: Plugin,
+  files: ReadonlyMap<string, Uint8Array> | Readonly<Record<string, Uint8Array>>,
   expectedPluginHash?: PluginHash,
 ): PluginHash {
-  const value = validatePlugin(plugin)
-  const files = normalizeArtifactFiles(inputFiles)
+  const normalized = normalizeArtifactFiles(files)
 
   if (expectedPluginHash !== undefined) {
     assertDigest(expectedPluginHash, 'expectedPluginHash')
   }
 
-  const declaredPaths = new Set(value.files.map((file) => file.path))
-  if (files.size !== declaredPaths.size) {
+  const declaredPaths = new Set(plugin.files.map((file) => file.path))
+  if (normalized.size !== declaredPaths.size) {
     throw new PluginArtifactError('artifact file set does not exactly match plugin.files')
   }
 
-  for (const [path, bytes] of files) {
+  for (const [path, bytes] of normalized) {
     assertCanonicalArtifactPath(path, `artifact file path ${JSON.stringify(path)}`)
     if (!declaredPaths.has(path)) {
       throw new PluginArtifactError(`artifact contains undeclared file: ${path}`)
@@ -343,8 +412,8 @@ export function verifyArtifact(
     }
   }
 
-  for (const descriptor of value.files) {
-    const bytes = files.get(descriptor.path)
+  for (const descriptor of plugin.files) {
+    const bytes = normalized.get(descriptor.path)
     if (bytes === undefined) {
       throw new PluginArtifactError(`artifact is missing declared file: ${descriptor.path}`)
     }
@@ -356,9 +425,41 @@ export function verifyArtifact(
     }
   }
 
-  const calculated = pluginHash(value)
+  const calculated = pluginHash(plugin)
   if (expectedPluginHash !== undefined && calculated !== expectedPluginHash) {
     throw new PluginArtifactError('PluginHash mismatch')
   }
   return calculated
+}
+
+export function verifyArtifact(
+  plugin: unknown,
+  inputFiles: ReadonlyMap<string, Uint8Array> | Readonly<Record<string, Uint8Array>>,
+  expectedPluginHash?: PluginHash,
+): PluginHash {
+  return verifyArtifactFiles(validatePlugin(plugin), inputFiles, expectedPluginHash)
+}
+
+export function verifyEmbeddedArtifact(
+  plugin: unknown,
+  expectedPluginHash?: PluginHash,
+): PluginHash {
+  const value = validatePlugin(plugin)
+  if (value.artifact === undefined) {
+    throw new PluginArtifactError('plugin.artifact is required')
+  }
+
+  const files = new Map<string, Uint8Array>()
+  for (const descriptor of value.files) {
+    const encoded = value.artifact[descriptor.path]
+    if (encoded === undefined) {
+      throw new PluginArtifactError(`plugin.artifact is missing declared file: ${descriptor.path}`)
+    }
+    files.set(
+      descriptor.path,
+      decodeCanonicalBase64(encoded, `plugin.artifact[${JSON.stringify(descriptor.path)}]`),
+    )
+  }
+
+  return verifyArtifactFiles(value, files, expectedPluginHash)
 }

@@ -69,7 +69,7 @@ Record
 └── data = Plugin
 ```
 
-`core.plugin` 只定义 Plugin 数据及其 runtime artifact validation：
+`core.plugin` 定义 Plugin 数据、executable artifact identity，以及 optional embedded artifact validation。
 
 ```text
 validatePlugin
@@ -77,6 +77,7 @@ canonicalPlugin
 fileHash
 pluginHash
 verifyArtifact
+verifyEmbeddedArtifact
 ```
 
 它不负责发行、SDK、Repository issuer、版本推荐、弃用、packer policy 或 Core Profile。
@@ -102,11 +103,67 @@ description
 runtime
 dependencies
 files
+artifact?
 ```
+
+其中 `files[]` 定义 exact executable artifact identity；`artifact?` 允许把同一 exact bytes 直接放进 Plugin Record。
 
 `package`、`contributors`、`description` 不属于 Plugin runtime validity；贡献、源码、build provenance 等由更高层 Record/Asset/Repo/Labour 数据表达。
 
-PluginHash 现在承诺 exact executable artifact，而不再只承诺 schema descriptor。
+## Artifact identity 与存储分离
+
+PluginHash 不依赖 artifact 的存储位置。
+
+```mermaid
+flowchart TB
+    P["Plugin descriptor"]
+    P --> F["files[] path / size / FileHash"]
+    F --> H["PluginHash"]
+
+    E["embedded artifact"] --> F
+    X["external artifact"] --> F
+```
+
+`files[]` 通过 FileHash 承诺 executable bytes，因此相同 bytes：
+
+```text
+随 Record 上链
+本地 cache
+Repo/object storage
+HTTP mirror
+未来 P2P/registry
+```
+
+都可以验证成同一个 PluginHash。
+
+小型、必要的 Plugin 应优先自包含 embedded artifact。这样节点同步到 Plugin Record 后即可恢复、验证并缓存 executable content，不需要先依赖一个独立 Plugin registry。
+
+## Artifact 与 Asset 分层
+
+Plugin artifact 是 Plugin 本身运行所需的程序内容：runtime code、schema，以及必要的小型 runtime data。
+
+大型静态内容通常属于 Asset 层，例如模型、图片、视频、地图、词典、数据集或大型资源包。它们可以由运行中的 Plugin 按领域规则和显式输入请求。
+
+```mermaid
+flowchart TB
+    P["Plugin"]
+    P --> A["small executable artifact"]
+    A --> Chain["prefer embed on chain"]
+
+    P --> Run["runtime"]
+    Run --> Asset["large Assets"]
+    Asset --> Store["Repo / object storage / other resolver"]
+```
+
+`core.plugin` 不依赖 Asset，也不定义 AssetId。Asset 是上层能力，不反向污染 Core identity。
+
+## Bundle size 工程规则
+
+Plugin build tooling 应报告 executable artifact 的总 raw size，并在大约超过 **500 KiB** 时给出 warning，提示开发者检查是否把大型静态资源错误 bundle 进 executable artifact。
+
+500 KiB 不是共识限制。大于该值的 Plugin 仍然可以合法上链；是否拆 Asset 是开发和部署选择。
+
+这个规则类似 Vite 的 bundle-size warning：用于控制工程体积，不进入 Block validity。
 
 ## Record 是通用事实容器
 
@@ -159,14 +216,16 @@ Block/BlockHeader 的 hash、Merkle、签名、Genesis 特例与链选择边界�
 ```text
 Genesis Block
 └── records[]
-    ├── Record<data = Plugin>
-    ├── Record<data = Plugin>
+    ├── Record<data = Plugin + embedded artifact>
+    ├── Record<data = Plugin + embedded artifact>
     └── ...
 ```
 
-因此不再采用独立于 Record/Block 的 `S0 Plugin artifact set` 作为第二条 Plugin 数据通路。
+因此不存在独立于 Record/Block 的 `S0 Plugin artifact set` 第二通路。
 
-Genesis 中哪些 RecordId、signature、Header 字段需要 bootstrap 特例，应在 Genesis / `core.record` / `core.block` 审查中依据旧代码逐项决定，而不是由 `core.plugin` 发明特殊发行机制。
+MVP 的初始 Core Plugins 应携带完整 embedded artifact，使新节点只凭 Genesis/链数据即可取得解释链所需的 Core executable content。独立 registry、mirror、CDN 或 P2P 可以以后增加，但不是 bootstrap 前置基础设施。
+
+Genesis 中 RecordId、signature、Header 等具体 bootstrap 特例，应在 Genesis / `core.record` / `core.block` 审查中依据旧代码逐项决定。
 
 ## Runtime 边界
 
@@ -174,7 +233,9 @@ Runtime 提供可替换的宿主能力，例如：
 
 ```text
 process / Cordis Context
-Plugin artifact fetch/cache
+Plugin artifact cache
+optional external artifact fetch
+Asset fetch / storage
 filesystem / object storage
 MongoDB / Redis / index
 network transport / sync

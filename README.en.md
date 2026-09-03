@@ -4,15 +4,11 @@
 
 `@labourchain/core-plugins` is LabourChain's core chain-plugin project.
 
-It defines and implements the chain-level execution rules at the foundation of LabourChain: how Plugins exist as immutable, versioned on-chain packages, how Records describe and confirm facts, how Entities provide public-key identity, how Blocks confirm ordered batches of Records into a continuous public history, and how the chain starts from its unique Genesis.
+The original [`Ri0n72Y/blockchain-service`](https://github.com/Ri0n72Y/blockchain-service) is retained as the historical Source Fact for legacy protocol behavior. Current requirements and architecture live under [`docs/`](docs/README.md); implementation specifications under [`spec/`](spec/README.md) are projections of reviewed docs.
 
-The original [`Ri0n72Y/blockchain-service`](https://github.com/Ri0n72Y/blockchain-service) is retained only as the historical factual source for legacy protocol behavior. Current requirements and architecture live in `docs/`; implementation specifications under `spec/` are projections of reviewed docs.
+## Core
 
-## Current model
-
-A LabourChain **Plugin** is an immutable on-chain package containing schema/public types and deterministic executable functions. Its capability is comparable to a Smart Contract in Ethereum terminology, while its engineering model is closer to a normal package/plugin: it is published under a name and version, an existing release is not mutated in place, and changes are introduced through later versions or patch facts.
-
-The current Core plugin set is:
+Current Core Plugins:
 
 ```text
 core.plugin
@@ -21,49 +17,64 @@ core.entity
 core.block
 ```
 
-`BlockHeader` is a public type owned by `core.block`; it is not an independent plugin.
-
-The executable object carried by the chain is the built **artifact**, not a source repository that every runner must clone and build. A runner fetches the artifact, verifies its PluginHash, and loads the runtime code directly. Source files, package-manager lockfiles, build configuration, and commit history belong to Repository/Asset provenance rather than the runtime Plugin payload.
-
-Ordinary Plugin releases are issued by a Repository. The release Record uses the Repository's Entity public key as `createdBy`; from that public key the Repository can be resolved, and its Asset/Labour Record graph can be followed to reconstruct source, build inputs, commits/assets, and contribution history. Initial Core plugins in Genesis are the single bootstrap exception and do not require a pre-existing issuing Repository.
-
-## Two orthogonal structures
-
-LabourChain contains:
-
-- **Core Block Chain** — batch confirmation and continuous storage history for Records;
-- **Labour / Asset DAG** — business and contribution relationships between Records, Assets, source, builds, and derived outcomes, closer to a Git commit DAG.
-
-Blocks provide confirmation. Records carry facts. Labour / Asset DAG topology does not participate in generic Core Block validity.
-
-Genesis is the single prior exception of the chain. It directly establishes the initial Plugin state. From the first ordinary Block onward, Plugin, Record, Entity, and Block processing follows strict non-Genesis rules.
-
-## Identity, digest, and Record confirmation
-
-Only Entity key material and Entity-public-key references use Base58, fixed to base58btc / the Bitcoin alphabet.
+The source-aligned composition remains:
 
 ```text
-Entity public key -> Base58, may appear on chain
-Entity secret key -> Base58, local only, never on chain
+Plugin / Entity / domain data
+        -> Record.data
+Record[]
+        -> Block.records[]
 ```
 
-Signatures are not identities and are not Base58. RecordId, PluginHash, RecordsRoot, BlockId, and other DoubleSHA256-derived values are digests; the current wire representation is lowercase hexadecimal.
+`BlockHeader` is a public type owned by `core.block`; it is not a separate Plugin.
 
-An ordinary `core.record@0.1.0` first derives RecordId from RawRecord, then uses the `createdBy` Entity key to sign a domain-separated RecordId payload with Ed25519. The signature itself is lowercase hexadecimal. This keeps fact-content identity separate from author/issuer confirmation without introducing a second serialization rule for `data`.
+## Plugin and artifact
 
-## Documentation and specifications
+Plugin evolves the historical schema-only `Protocol` into an executable protocol package.
 
-Current requirements and architecture are maintained under [`docs/`](docs/README.md):
+Its exact executable identity is described by:
 
-- [`docs/source-baseline.md`](docs/source-baseline.md) — historical facts directly supported by the original `blockchain-service`;
-- [`docs/architecture.md`](docs/architecture.md) — current LabourChain/Core requirements and architecture;
-- [`docs/plugin.md`](docs/plugin.md) — Plugin packages, artifacts, release identity, dependency locking, and provenance;
-- [`docs/block.md`](docs/block.md) — `core.block`, BlockHeader, Merkle commitment, signing, BlockId, and validation;
-- [`docs/genesis.md`](docs/genesis.md) — the Genesis singularity and initial Plugin set;
-- [`docs/ordering.md`](docs/ordering.md) — separation of Plugin activation, Block confirmation, and business relation order.
+```text
+runtime
+schema
+dependencies[]
+files[] { path, size, FileHash }
+```
 
-Implementation projections are maintained under [`spec/`](spec/README.md).
+with:
 
-## Project stage
+```text
+PluginHash = DoubleSHA256(canonical Plugin identity)
+```
 
-The Core Foundation requirements, architecture, and implementation specifications are now defined, with no known design blocker remaining. The current PR is limited to final docs/spec consistency review; once that passes, development moves into concrete Core Plugin implementation rather than expanding the foundation design further.
+Each FileHash commits to raw file bytes.
+
+A Plugin may also carry the complete artifact inline:
+
+```text
+artifact?: {
+  canonicalPath: canonicalBase64RawBytes
+}
+```
+
+Embedding does not create another Plugin identity. The same exact bytes embedded on chain, read from local cache, or fetched externally verify to the same PluginHash.
+
+Small and necessary Plugins should normally embed their executable artifact. MVP Genesis Core Plugins should be self-contained so a new node can obtain the code required to interpret the chain without first depending on an npm-style Plugin registry.
+
+Large static resources such as models, images, video, maps, dictionaries, datasets, or resource packs should normally move to higher-level Asset/Runtime mechanisms. Build tooling should warn at roughly 500 KiB of executable artifact size; this is not a consensus-validity limit.
+
+## Review status
+
+`core.plugin` implements Plugin identity plus external and embedded artifact verification.
+
+Parts of `core.record`, `core.block`, and Genesis identity/signature/ordering remain under source-first review. The previously introduced Plugin activation/S0/Repository-issuer state model has been removed and must not be treated as an implementation prerequisite.
+
+## Documentation
+
+- [`docs/source-baseline.md`](docs/source-baseline.md) — historical Source Facts;
+- [`docs/architecture.md`](docs/architecture.md) — current Core architecture;
+- [`docs/plugin.md`](docs/plugin.md) — Plugin, artifact, Asset boundary, and runtime verification;
+- [`docs/block.md`](docs/block.md) — Block source-review boundary;
+- [`docs/genesis.md`](docs/genesis.md) — Genesis = Block and Core bootstrap artifacts;
+- [`docs/ordering.md`](docs/ordering.md) — separation of confirmation, business, and runtime order;
+- [`spec/`](spec/README.md) — implementation projections.

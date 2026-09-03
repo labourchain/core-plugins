@@ -20,11 +20,11 @@ Repository documentation must distinguish:
 - **Current Design** — the currently accepted LabourChain requirement/architecture that implementation must follow;
 - **Open Question** — unresolved behavior that must not be silently implemented.
 
-A Current Design may replace historical behavior. Preserve old behavior in `docs/source-baseline.md`; do not maintain a separate long-lived migration design layer.
+A Current Design may replace historical behavior. Preserve old behavior in `docs/source-baseline.md`; do not rewrite a new design as historical fact.
 
-## Documentation model
+## Development process
 
-Requirements and architecture live together in `docs/`.
+Requirements and architecture live in `docs/`. `spec/` is a projection of reviewed docs and must not invent missing design decisions.
 
 The development process is:
 
@@ -37,19 +37,11 @@ The development process is:
 7. add tests with independent regression value;
 8. run the project verification command.
 
-`spec/` is a projection of reviewed docs. It must not invent missing design decisions.
+If a spec is marked pending review, do not implement one possible answer merely to make the system run.
 
-Do not introduce stable requirement IDs during the current design/development phase. Long-lived numbering can be introduced once the project reaches a maintenance stage where traceability benefits outweigh churn.
+## Terminology and Core Plugin set
 
-## Terminology
-
-Use **Plugin** / **plugin** as the normal engineering and chain-data term for the immutable executable package.
-
-Historical `Protocol` terminology belongs to Source Fact when describing `blockchain-service`. Current design must not preserve a second `Protocol` entity merely for historical naming compatibility.
-
-When explaining the concept externally, a LabourChain Plugin can be described as equivalent in capability to a Smart Contract while using a package/plugin release model.
-
-## Core Plugin set
+Use **Plugin** / **plugin** as the current engineering and chain-data term. Historical `Protocol` terminology belongs to Source Fact.
 
 The current Core Plugin set is:
 
@@ -60,86 +52,98 @@ core.entity
 core.block
 ```
 
-`BlockHeader` is a public type owned by `core.block`. Do not reintroduce a separate `core.block-header` Plugin merely because the historical Service used a separate schema/protocol.
+`BlockHeader` is a public type owned by `core.block`; do not reintroduce a separate `core.block-header` Plugin merely because the historical Service had one.
 
-## Plugin immutability and artifact rule
+## Core composition
 
-A published Plugin release is immutable. The same release identity must never be rebound to different executable content; changes require a later version or an explicit later patch fact.
-
-The chain execution object is the built Plugin artifact, not a source checkout. A runner must be able to fetch an artifact, verify its PluginHash, and execute it without cloning its source Repository or resolving mutable package-manager dependency ranges.
-
-Plugin artifact identity follows `docs/plugin.md`:
-
-- each runtime file is locked by raw-byte `FileHash`;
-- canonical `PluginManifest` commits to file path/size/hash, runtime descriptor, schema path, and exact chain-Plugin dependencies;
-- `PluginHash = DoubleSHA256(canonical PluginManifest bytes)`;
-- ordinary npm/pnpm dependencies are bundled or vendored at build time;
-- runtime chain-Plugin dependencies resolve by exact PluginHash;
-- package-manager lockfiles belong to build provenance, not runtime Plugin identity.
-
-Do not invent a second runtime lock format on top of this model.
-
-## Release identity and provenance
-
-Ordinary post-Genesis Plugin releases are issued by a Repository.
-
-The Plugin release Record's `createdBy` is the Repository's Entity public key. Do not use `BlockHeader.packer` as Plugin issuer identity; packer only identifies who signed the Block confirmation.
-
-The Repository/Asset/Labour graph is the provenance path for source and contribution history:
+The source-aligned composition is:
 
 ```text
-Plugin release Record
-  -> createdBy Repository public key
-  -> Repository
-  -> artifact/source/build Assets
-  -> Labour Records / commits / contribution DAG
+Plugin / Entity / domain data
+        -> Record.data
+Record[]
+        -> Block.records[]
 ```
 
-Do not duplicate a source-repository pointer inside the Plugin declaration when the provenance is already reachable through the issuing Repository and Asset graph.
+Plugin definitions do not use a separate `PluginRelease` chain-data type. Genesis is still a Block containing Records; there is no standalone `GenesisManifest`, `GenesisId`-based Plugin state, or `S0 Plugin artifact set` unless a later reviewed design explicitly introduces one.
 
-Genesis initial Core Plugins are the bootstrap exception and do not require a pre-existing issuing Repository.
+Do not reintroduce `activePluginState`, N→N+1 activation, same-Block Plugin rejection, Repository-issued Plugin state, or similar availability rules as established facts. Plugin availability semantics remain subject to the dedicated `core.record` / `core.block` review.
 
-## Identity and digest encoding
+## Plugin identity and artifact rule
 
-Keep Entity identity distinct from cryptographic digests:
+A Plugin is executable protocol data carried by `Record.data`.
 
-- Entity public keys use base58btc and may appear on chain;
-- Entity secret keys use base58btc only as local key material and must never appear on chain;
-- fields whose semantic type is an Entity public-key reference use the Entity Base58 form;
-- signatures are signature results, not Base58 identities;
-- RecordId, PluginHash, RecordsRoot, BlockId, GenesisId, and other DoubleSHA256-derived values are digest values, not Base58 identities.
+Current Plugin identity follows `docs/plugin.md` and `spec/core-plugin.md`:
 
-Do not generalize Base58 from Entity identity to all chain IDs.
+- runtime/schema files are described by canonical paths;
+- every file is locked by `path + size + FileHash`;
+- exact chain-Plugin dependencies use `name + version + PluginHash`;
+- dependency/file arrays are canonicalized before JCS;
+- `PluginHash = DoubleSHA256(canonical Plugin identity bytes)`;
+- ordinary npm/pnpm/build dependencies are bundled or otherwise handled before runtime;
+- runtime chain-Plugin dependencies resolve by exact PluginHash.
 
-## Genesis rule
+Do not invent a second manifest/release identity for the same Plugin data.
 
-Genesis is the unique bootstrap singularity. It establishes the initial Plugin set directly and is not validated through ordinary post-Genesis Plugin-release Record / Block rules.
+## Embedded artifact and Asset boundary
 
-Genesis identity follows `docs/genesis.md`: exact initial `name/version/pluginHash` entries are canonically ordered and hashed into GenesisId, while the complete Plugin artifacts are verified separately by their PluginHash.
+A Plugin may optionally carry its complete executable artifact in the same `Record.data = Plugin` value:
 
-Do not add reusable runtime "create genesis" exceptions into ordinary Plugin validation. Genesis recognition and ordinary Plugin/Record/Block behavior must remain conceptually separate.
+```text
+artifact?: {
+  canonicalPath: canonicalBase64RawBytes
+}
+```
 
-## Block rule
+`artifact` is storage/transport, not a second Plugin identity. `PluginHash` excludes the embedded storage field because `files[]` already commits transitively to exact raw bytes through FileHash.
 
-`core.block` owns Block, BlockHeader, ordered Records Merkle commitment, Header signing/verification, `blockId()`, and ordinary Block validation.
+When embedded artifact is present, it must exactly cover `files[]` and its decoded bytes must match every declared size/FileHash. The same exact bytes obtained from chain data, local cache, Repo/object storage, a mirror, or another resolver verify to the same PluginHash.
 
-BlockId is derived deterministically from the final signed BlockHeader. Labour / Asset DAG topology does not participate in generic Core Block validity.
+Small and necessary Plugins should normally embed their complete executable artifact. MVP Genesis Core Plugin Records should be self-contained so a new node does not require an npm-style Plugin registry before it can obtain the code needed to interpret the chain.
+
+Large static resources such as models, images, video, maps, dictionaries, datasets, or resource packs should normally be moved to higher-level Asset/Runtime mechanisms. `core.plugin` does not depend on Asset and does not define AssetId.
+
+Build tooling may warn when executable artifact size is roughly above 500 KiB. This is engineering guidance only and must never become a Core/Block/consensus validity limit.
+
+## Record, Block, and Genesis review gates
+
+`core.record`, `core.block`, and parts of Genesis remain under source-first review.
+
+Do not assume these unresolved items before their dedicated review:
+
+```text
+final RecordId migration algorithm
+final ordinary/Genesis signing interaction
+Plugin Record availability within a Block
+same-Block dependency resolution
+pre-Block Plugin snapshots
+final BlockHeader / Block identity rules
+Genesis RecordId / Header / signature bootstrap rules
+```
+
+Historical source facts remain inputs to those reviews; superseded Plugin-state/S0 proposals are not implementation requirements.
+
+## Identity and digest boundary
+
+Keep Entity identity distinct from cryptographic digests.
+
+Entity key encoding is owned by `core.entity`. FileHash and PluginHash are DoubleSHA256-derived digests using the representation defined by their current spec. RecordId, RecordsRoot, Block identity, and signature encodings must follow their independently reviewed specs rather than being inferred from the fact that a value is an "ID".
+
+Secret key material is local-only and must never appear in chain data.
 
 ## Scope control
 
-Strict implementation boundaries belong in `spec/`. Use them to prevent accidental expansion, unnecessary abstractions, compatibility layers without need, and coverage-driven testing.
+Core confirms Records in Blocks; it does not directly own Labour, Asset, Project, Repository, Member, SDK, package publishing, storage, network governance, or UI semantics.
 
-README files are written for people visiting the repository and should focus on what the project is, its current model, and how to navigate it.
+Do not make Block confirmation order carry business meaning that belongs to Record/Asset/Labour relationships. The business DAG and Core confirmation chain are distinct structures.
 
-## Engineering style
+Keep Plugin behavior host-agnostic. Process startup, Cordis hosting, artifact cache/fetch, Asset storage, persistence, transport, secret-key storage, packer authorization, canonical-chain policy, sandbox/capability policy, and observability belong to runner/server or higher-level packages unless a reviewed Core spec explicitly says otherwise.
 
-Prefer source-backed, reviewable changes.
+## README and documentation style
 
-Do not silently repair disagreements in the old Service. Document Source Fact first, then apply an explicit Current Design.
+README files are for repository visitors and should describe the current model and navigation without preserving superseded architecture.
 
-Do not make Block confirmation order carry business semantics that belong to Record/Asset relationships. The Labour/Asset causal graph and the Core confirmation chain are distinct structures.
-
-Keep Plugin behavior host-agnostic. Process startup, plugin hosting, persistence, transport, secret-key storage, packer authorization, and canonical-chain policy belong to the separate runner/server project.
+When current docs change an architectural decision, check repository-level guidance and dependent specs for stale assumptions. A passing test suite does not make contradictory docs normative.
 
 ## CI
 
@@ -147,4 +151,4 @@ When executable Node.js code is present, CI should validate the supported Node.j
 
 Do not add an operating-system matrix unless concrete platform-specific behavior appears and needs regression protection.
 
-Tests must protect meaningful Plugin behavior or a demonstrated regression. Coverage percentage, job count, and platform count are not quality goals by themselves.
+Tests must protect meaningful behavior or a demonstrated regression. Coverage percentage, job count, and platform count are not quality goals by themselves.

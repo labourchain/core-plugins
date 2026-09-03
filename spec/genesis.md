@@ -27,9 +27,9 @@ Block.records[] = Record[]
 Plugin bootstrap data = Record.data = Plugin
 ```
 
-There is no independent `GenesisManifest` / `S0 Plugin artifact set` chain-data model in the current migration.
+There is no independent `GenesisManifest` / `S0 Plugin artifact set` chain-data model.
 
-## Initial Plugin Records
+## Initial Core Plugin Records
 
 Initial Core Plugin data is carried in Records interpreted by `core.plugin`:
 
@@ -42,13 +42,27 @@ core.block
 
 `BlockHeader` belongs to `core.block`; there is no independent `core.block-header` Plugin.
 
-Each Plugin value must satisfy `spec/core-plugin.md`, and the corresponding executable artifact must be verifiable by `core.plugin.verifyArtifact()` semantics before the runner executes it.
+For MVP bootstrap, each initial Core Plugin Record must carry a complete valid `Plugin.artifact` as defined by `spec/core-plugin.md`.
 
-Artifact acquisition/distribution is explicit runner input and is not a second Genesis chain-data format.
+The embedded bytes must cover the exact declared `files[]` set and verify by size/FileHash/PluginHash. This allows a new node to recover and cache Core executable content from Genesis/chain data without requiring an external Plugin registry.
+
+This is still ordinary Plugin data inside Records; it is not an independent bootstrap package/state format.
+
+## Optional external distribution
+
+Registry, mirror, CDN, Repo/object storage, P2P distribution or local caches may later provide the same exact Plugin artifact bytes.
+
+They are optional distribution/availability mechanisms. They do not create a different Plugin identity and are not required for MVP Core bootstrap.
+
+## Large static resources
+
+Core bootstrap artifacts should remain small and self-contained. Large static content such as models, datasets, images, maps or resource packs should normally be externalized into higher-level Asset/Runtime mechanisms.
+
+The approximately 500 KiB build warning in `spec/core-plugin.md` is tooling guidance only and must not become a Genesis/Block validity limit.
 
 ## Deferred bootstrap details
 
-The historical source contains Genesis-specific behaviors that are not resolved by this `core.plugin` review:
+The historical source contains Genesis-specific behaviors not resolved by this artifact-availability change:
 
 - Protocol Record ID equals historical ProtocolHash instead of ordinary `calcRecordID(rawRecord)`;
 - bootstrap Protocol Records use `createdBy = "Root"`;
@@ -57,9 +71,9 @@ The historical source contains Genesis-specific behaviors that are not resolved 
 - Root Member and Genesis Repository are created as Records;
 - Genesis Repository public key is used as packer;
 - historical Header signing behavior differs from the current unreviewed `core.block` design;
-- historical Service has a separate `sys.block-header` Protocol even though current architecture intends `BlockHeader` to be a type owned by `core.block`.
+- historical Service has a separate `sys.block-header` Protocol even though current architecture intends `BlockHeader` to be owned by `core.block`.
 
-These facts must be resolved when `core.record`, `core.block`, and Genesis bootstrap behavior are reviewed. This spec must not invent replacement rules before that review.
+These facts must be resolved when `core.record`, `core.block`, and Genesis bootstrap behavior are reviewed.
 
 ## Prohibited design assumptions
 
@@ -73,24 +87,24 @@ Genesis identity is a hash of a Plugin-entry manifest
 ordinary Plugin release/activation logic belongs to core.plugin
 ```
 
-Those assumptions came from the superseded design and are removed.
-
 ## Current acceptance
 
-For work performed before the later Genesis review, only the following may be treated as frozen:
+Before the later Genesis review, only the following may be treated as frozen:
 
 ```text
 Plugin is data
 Plugin data is carried by Record
 Genesis is a Block
 Genesis carries Plugin Records in Block.records[]
-Plugin artifact validity uses core.plugin runtime verification
+initial Core Plugin Records embed complete executable artifacts
+Plugin identity is unchanged by embedded vs external artifact storage
+MVP Core bootstrap requires no external Plugin registry
 ```
 
 Do not implement a standalone `recognizeGenesis(initialPluginArtifacts)` path from the superseded S0 model.
 
 ## Tests
 
-No standalone Genesis implementation tests are required from the `core.plugin` implementation issue.
+The `core.plugin` implementation tests should verify embedded artifact behavior independently.
 
-When Genesis is implemented later, tests must be derived from the reviewed Record/Block bootstrap contract and historical fixtures rather than the removed `GenesisManifest/S0` model.
+When Genesis is implemented later, integration tests should verify that initial Core Plugin Records actually include complete valid embedded artifacts, while RecordId/Header/signature behavior follows the separately reviewed Genesis contract.
