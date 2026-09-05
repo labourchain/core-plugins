@@ -1,6 +1,6 @@
 # `core.entity` Specification
 
-Status: defined for the current Entity identity primitive; domain ownership semantics remain outside Core. Record/Block Plugin-availability semantics remain pending their dedicated source-aligned review.
+Status: defined for the current Entity identity primitive; domain ownership semantics remain outside Core. Ordinary Record identity/signature behavior is defined by `core.record`; Plugin availability relative to Block state remains outside `core.entity`.
 
 ## Source
 
@@ -13,6 +13,7 @@ Current design source:
 
 - `docs/architecture.md`
 - `docs/plugin.md`
+- `docs/record.md`
 - `docs/genesis.md`
 
 Historical source uses `protocolHash`; current Entity semantics use `pluginHash`.
@@ -53,7 +54,7 @@ pluginHash
 type?
 ```
 
-`pluginHash` is the exact Plugin identity governing/interpreting this Entity payload. It is a DoubleSHA256 digest, not an Entity public key.
+`pluginHash` is the exact Plugin identity governing this Entity payload. It is a DoubleSHA256 digest, not an Entity public key.
 
 The historical Go-only `Data` field is not silently added to the current base Entity schema.
 
@@ -124,11 +125,13 @@ An Entity payload interpreted by `core.entity` must satisfy:
 - `pluginHash` representation/integrity rules defined below;
 - any additional rules defined by a domain Plugin that builds on Entity.
 
-The common Record envelope, RecordId/signature verification, and the rule by which a Record obtains the exact Plugin that interprets its `data` belong to `core.record` / `core.block` composition. Their Plugin-availability semantics are still pending review and must not be expressed here as `activePluginState`, pre-Block-only resolution, N→N+1 activation, or same-Block rejection.
+When Entity data is carried by a Record, the common envelope, JCS RecordId and `createdBy` author signature are validated by the defined `core.record` contract.
+
+`core.record` does not resolve or execute the Record's protocol Plugin. Runtime/composition uses the Record's `pluginHash` as machine authority. Any chain-level policy about Plugin availability relative to Block position belongs to `core.block` / runtime composition, not `core.entity`.
 
 For Ed25519 Entity identities, Base58-decoded `publicKey` must be exactly 32 bytes.
 
-`pluginHash` must be a valid 64-character lowercase-hex PluginHash consistent with the Record/plugin context that ultimately interprets this Entity payload under the reviewed Record/Block rules.
+`pluginHash` must be a valid 64-character lowercase-hex PluginHash according to the Entity payload contract. `core.entity` does not turn a human-readable name/version into machine authority.
 
 ## Genesis boundary
 
@@ -136,7 +139,7 @@ Genesis remains a Block containing Records. Initial `core.entity` Plugin data th
 
 For MVP bootstrap, that initial `core.entity` Plugin Record should carry the complete embedded executable artifact required by `spec/core-plugin.md`, just like the other initial Core Plugin Records. This lets a node obtain and verify the Plugin bytes from Genesis/chain data without first depending on an external Plugin registry.
 
-Whether Genesis also creates Root Member, Repository, or packer business entities, and the exact Genesis RecordId/signature/Header rules, remain part of the dedicated source-aligned Genesis/Record/Block review rather than `core.entity`.
+The ordinary Record contract is already defined by `core.record`. Whether Genesis retains historical exceptions such as special RecordId, `createdBy = "Root"`, unsigned bootstrap Records, Root Member/Repository creation, or special Header behavior remains part of the dedicated Genesis / `core.block` review.
 
 ## Historical encoding discrepancy
 
@@ -151,7 +154,7 @@ Reject at least:
 - missing required base Entity fields;
 - malformed base58btc `publicKey`;
 - a decoded public key whose length is not 32 bytes for Ed25519;
-- malformed or inconsistent `pluginHash`;
+- malformed `pluginHash`;
 - structurally invalid `contributors` / optional `type` values under the current schema;
 - accidental inclusion of secret-key material in serialized Entity data.
 
@@ -172,4 +175,4 @@ Meaningful tests should cover:
 - PluginHash remaining a digest rather than Base58 identity;
 - the historical Go-model/CUE `Data` mismatch remaining visible rather than silently normalized.
 
-Tests for Repository/Member business rules belong to their owning Plugins. Tests for Plugin availability/activation belong to the later reviewed Record/Block contract, not `core.entity`.
+Tests for Repository/Member business rules belong to their owning Plugins. Plugin availability relative to Block state belongs to the later `core.block` / runtime-composition contract, not `core.entity` or `core.record`.

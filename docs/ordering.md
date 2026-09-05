@@ -2,7 +2,7 @@
 
 LabourChain 同时存在区块确证顺序、业务事实关系和运行时到达顺序。当前已确认的原则是不要把这些顺序混成一个语义。
 
-Plugin 本身是 `Record.data`，因此这里不再维护独立的 Plugin release/activation state machine。
+Plugin 本身是 `Record.data`，不存在独立的 Plugin release/activation state machine。
 
 ## Block confirmation order
 
@@ -60,11 +60,27 @@ runtime arrival
 
 除非某个具体 Plugin 明确定义，否则 `receivedAt`、队列位置或本地处理先后不具有链语义。
 
-## Plugin Record availability
+## Plugin resolution / availability
 
-旧 Service 中 Protocol/当前 Plugin 都是 Record data，不存在独立 `PluginRelease` 状态对象。
+Record 只声明协议来源：
 
-因此“某条 Plugin Record 在哪个时点开始可以解释其他 Records”属于 Record/Block 组合验证问题，而不是 `core.plugin` 自身的 activation API。
+```text
+plugin = human-readable name@version
+pluginHash = exact machine identity
+```
+
+`core.record` 不负责定位、激活或执行 Plugin。runtime/composition layer 根据 `pluginHash` 获取 exact Plugin，再由 Plugin 自身执行协议规则。
+
+因此以下问题都不属于 `core.record` primitive：
+
+```text
+Plugin Record 在哪个时点可被引用
+same-block Plugin Record 是否可被后续 Record 使用
+Plugin dependency 是否允许同 Block 解析
+是否需要 pre-Block Plugin snapshot
+```
+
+这些问题如果需要形成链级规则，应在 `core.block` / runtime composition 的独立审查中确定。
 
 此前文档冻结的：
 
@@ -73,17 +89,7 @@ Plugin confirmed in Block N
 -> active from Block N+1
 ```
 
-来自后续过度设计，本轮撤销为已定规则。
-
-在 `core.record` / `core.block` 审查完成前，不预设：
-
-```text
-same-block Plugin Record 是否可被同 Block 后续 Record 使用
-Plugin dependency 是否允许同 Block 解析
-是否需要 pre-Block Plugin snapshot
-```
-
-这些问题必须结合旧 Service 的实际验证路径、Block Record 顺序和当前 executable Plugin 需求重新决定。
+来自后续过度设计，当前不是规范要求。
 
 ## Genesis
 
@@ -91,7 +97,7 @@ Genesis 仍然是 Block，初始 Plugin 仍然通过 `Record.data = Plugin` 出�
 
 不存在独立 `S0 Plugin artifact set` ordering 规则。
 
-Genesis 的 bootstrap 特例留给 Genesis / `core.record` / `core.block` 审查。
+普通 `core.record` 不包含 Genesis 分支；bootstrap Record/Block 特例由 Genesis / `core.block` review 单独决定。
 
 ## Current invariant
 

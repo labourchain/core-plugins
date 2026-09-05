@@ -67,7 +67,7 @@ Record[]
 
 Plugin definitions do not use a separate `PluginRelease` chain-data type. Genesis is still a Block containing Records; there is no standalone `GenesisManifest`, `GenesisId`-based Plugin state, or `S0 Plugin artifact set` unless a later reviewed design explicitly introduces one.
 
-Do not reintroduce `activePluginState`, N→N+1 activation, same-Block Plugin rejection, Repository-issued Plugin state, or similar availability rules as established facts. Plugin availability semantics remain subject to the dedicated `core.record` / `core.block` review.
+Do not reintroduce `activePluginState`, N→N+1 activation, same-Block Plugin rejection, Repository-issued Plugin state, or similar availability rules as established facts. Plugin availability/resolution is a runtime/Block-composition concern, not a `core.plugin` or `core.record` state API.
 
 ## Plugin identity and artifact rule
 
@@ -105,20 +105,50 @@ Large static resources such as models, images, video, maps, dictionaries, datase
 
 Build tooling may warn when executable artifact size is roughly above 500 KiB. This is engineering guidance only and must never become a Core/Block/consensus validity limit.
 
-## Record, Block, and Genesis review gates
+## Record contract
 
-`core.record`, `core.block`, and parts of Genesis remain under source-first review.
+Ordinary `core.record@0.1.0` is defined by `docs/record.md` and `spec/core-record.md`.
+
+```text
+RawRecord
+= plugin / pluginHash / createdBy / createdAt / data
+
+Record
+= id / signature + RawRecord
+```
+
+Record carries two independent sources:
+
+```text
+plugin / pluginHash -> protocol source
+createdBy / signature -> actor source
+```
+
+`pluginHash` is runtime/runner machine authority. `plugin = name@version` is signed human-readable declaration and is not reverse-checked after resolving by hash.
+
+```text
+RecordId = DoubleSHA256(JCS(RawRecord))
+```
+
+RecordId commits to complete RawRecord, including complete `data`. `id` and `signature` are excluded.
+
+Ordinary Record signatures use the fixed domain `labourchain:record:v1:` plus RecordId bytes and Ed25519. `createdBy` is a base58btc Entity public-key reference.
+
+`core.record` must not resolve/execute Plugin, own Plugin state, assign business DAG semantics, or contain reusable Genesis branches.
+
+## Remaining Block and Genesis review gates
+
+`core.block` and Genesis bootstrap details remain under source-first review.
 
 Do not assume these unresolved items before their dedicated review:
 
 ```text
-final RecordId migration algorithm
-final ordinary/Genesis signing interaction
 Plugin Record availability within a Block
 same-Block dependency resolution
 pre-Block Plugin snapshots
 final BlockHeader / Block identity rules
-Genesis RecordId / Header / signature bootstrap rules
+historical Genesis RecordId / createdBy / signature exceptions
+Genesis Header / signature bootstrap rules
 ```
 
 Historical source facts remain inputs to those reviews; superseded Plugin-state/S0 proposals are not implementation requirements.
@@ -127,7 +157,7 @@ Historical source facts remain inputs to those reviews; superseded Plugin-state/
 
 Keep Entity identity distinct from cryptographic digests.
 
-Entity key encoding is owned by `core.entity`. FileHash and PluginHash are DoubleSHA256-derived digests using the representation defined by their current spec. RecordId, RecordsRoot, Block identity, and signature encodings must follow their independently reviewed specs rather than being inferred from the fact that a value is an "ID".
+Entity key encoding is owned by `core.entity`. FileHash and PluginHash are DoubleSHA256-derived digests using the representation defined by their current spec. RecordId is DoubleSHA256 over RFC 8785 JCS RawRecord bytes. RecordsRoot, Block identity, and Block signatures follow their independently reviewed specs.
 
 Secret key material is local-only and must never appear in chain data.
 

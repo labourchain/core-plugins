@@ -1,6 +1,6 @@
 # Genesis
 
-本文记录 Genesis 当前已经确认的迁移边界。具体 Genesis RecordId、Header、签名和链 identity 规则将在 `core.record` / `core.block` 审查时继续依据旧 Service 逐项确定。
+本文记录 Genesis 当前已经确认的迁移边界。普通 `core.record` contract 已固定；Genesis RecordId/createdBy/signature 是否继续保留历史 bootstrap 特例，以及 BlockHeader/Block identity，仍由 Genesis / `core.block` 审查依据旧 Service 逐项确定。
 
 历史事实依据见 [`source-baseline.md`](source-baseline.md)。
 
@@ -82,6 +82,21 @@ Base64 decode
 
 这不是第二种 Genesis 数据结构。artifact 仍然只是 `Record.data = Plugin` 中的可选内容字段。
 
+## Ordinary Record contract
+
+普通 Record 当前固定为：
+
+```text
+RawRecord = plugin / pluginHash / createdBy / createdAt / data
+Record = id / signature + RawRecord
+RecordId = DoubleSHA256(JCS(RawRecord))
+signature = domain-separated Ed25519 signature over RecordId
+```
+
+`core.record` 本身不包含 `if genesis` 分支。
+
+历史 Genesis 中出现的特殊 Record 行为继续作为 bootstrap Source Facts 单独审查，而不进入普通 Record reusable API。
+
 ## External distribution remains optional
 
 未来仍可以存在：
@@ -106,7 +121,7 @@ local cache
 
 构建工具约 500 KiB 的 bundle warning 只用于发现不合理的大型 executable artifact，不改变 Genesis 或 Block validity。
 
-## Bootstrap 特例
+## Bootstrap Source Facts
 
 旧代码中存在若干 Genesis-specific 行为，例如：
 
@@ -120,16 +135,7 @@ Genesis Repository 作为 packer
 Genesis Header 使用当时的特殊签名流程
 ```
 
-这些都是需要在后续 `core.record` / `core.block` / Genesis review 中逐项判断的 Source Facts。
-
-本轮只冻结以下结构：
-
-```text
-Plugin is Record.data
-Genesis is Block
-Genesis contains Plugin Records
-Core bootstrap Plugin Records carry complete embedded artifacts
-```
+这些事实与当前普通 Record contract 不一致并不意味着普通 `core.record` 需要兼容分支。Genesis review 需要逐项决定哪些行为继续作为当前 bootstrap exception，哪些只保留为历史事实。
 
 ## Current boundary
 
@@ -139,18 +145,19 @@ Core bootstrap Plugin Records carry complete embedded artifacts
 Plugin is Record.data
 Genesis is Block
 Genesis contains Records
+ordinary RecordId uses JCS(RawRecord)
+ordinary Record signature uses current core.record contract
 PluginHash identity is independent of artifact storage location
 MVP Core bootstrap does not require an external Plugin registry
 ```
 
-尚未在本轮重新冻结：
+尚未冻结：
 
 ```text
 Genesis BlockId / GenesisId 的最终算法
-Genesis RecordId 特例是否继续保留
-bootstrap Record signature 规则
+历史 Protocol Record.id = ProtocolHash 特例是否继续保留
+bootstrap createdBy = "Root" 是否继续保留
+bootstrap Record signature 是否继续例外
 Genesis Header 的当前字段与签名规则
 Root Member / Genesis Repository 是否继续保留
 ```
-
-这些问题应在对应 Core 类型审查时以旧代码为第一依据，而不是由 `core.plugin` 处理。

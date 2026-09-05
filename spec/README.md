@@ -40,11 +40,11 @@ core.block
 
 ## 当前规格状态
 
-- [`core-plugin.md`](core-plugin.md) — 已定义并实现中的 Plugin data、FileHash/PluginHash、exact artifact verification、optional embedded artifact；
-- [`core-record.md`](core-record.md) — pending source-aligned review，旧 activePluginState/S0 假设非规范；
+- [`core-plugin.md`](core-plugin.md) — 已定义并实现的 Plugin data、FileHash/PluginHash、exact artifact verification、optional embedded artifact；
+- [`core-record.md`](core-record.md) — 已定义 ordinary Record primitive：JCS RecordId、协议来源、Entity 作者确认与 signature verification；
 - [`core-entity.md`](core-entity.md) — Entity public-key identity primitive；
 - [`core-block.md`](core-block.md) — pending source-aligned review，旧 Plugin-state/GenesisId 假设非规范；
-- [`genesis.md`](genesis.md) — `Genesis = Block` migration baseline，MVP Core Plugin Records 需要 embedded artifact，其余 bootstrap identity/signature 待 review；
+- [`genesis.md`](genesis.md) — `Genesis = Block` migration baseline，MVP Core Plugin Records 需要 embedded artifact，bootstrap identity/signature 特例仍待 review；
 - [`ordering.md`](ordering.md) — 只冻结 Block confirmation、业务关系和 runtime arrival order 的分离。
 
 ## Plugin artifact contract
@@ -69,17 +69,38 @@ artifact?: {
 
 `artifact` 一旦存在必须完整覆盖 `files[]` 并通过 exact size/FileHash verification。
 
-`artifact` 是存储方式，不进入 canonical Plugin identity。因此：
-
-```text
-embedded bytes
-external bytes
-local cache bytes
-```
-
-只要内容相同，都验证为同一个 PluginHash。
+`artifact` 是存储方式，不进入 canonical Plugin identity。因此 embedded/external/local-cache bytes 只要内容相同，都验证为同一个 PluginHash。
 
 MVP 初始 Core Plugins 应把完整 executable artifact 随 Genesis Plugin Records 上链，从而不需要先建立 npm-style Plugin registry。
+
+## Record contract
+
+普通 Record：
+
+```text
+RawRecord
+= plugin / pluginHash / createdBy / createdAt / data
+
+Record
+= id / signature + RawRecord
+```
+
+两种来源：
+
+```text
+plugin / pluginHash -> protocol source
+createdBy / signature -> actor source
+```
+
+`pluginHash` 是 runner/runtime 使用的机器权威 identity；`plugin = name@version` 是被签名的人类可读声明。
+
+```text
+RecordId = DoubleSHA256(JCS(RawRecord))
+```
+
+RecordId 承诺完整 RawRecord，包括完整 `data`。普通 signature 使用固定 domain-separated Ed25519 signature over RecordId。
+
+`core.record` 不 resolve/execute Plugin，也不包含 activation、Block availability 或 Genesis exception。
 
 ## Artifact / Asset boundary
 
@@ -89,21 +110,19 @@ Plugin artifact 只包含运行 Plugin 本身所需的代码、schema 与必要�
 
 `core.plugin` 不依赖 Asset，也不定义 AssetId。
 
-Build tooling 应报告 `sum(files[].size)`，大约超过 **500 KiB** 时给 warning，建议拆大型静态内容。该阈值不是 consensus validity rule。
+Build tooling 的约 500 KiB warning 是 docs 中的工程建议，不属于 consensus validity，也不要求 Core validator 实现该阈值。
 
 ## Identity / encoding boundary
 
 ```text
 Entity public key -> identity encoding defined by core.entity
 Signature         -> signature result, not Entity identity
-RecordId          -> cryptographic digest
+RecordId          -> DoubleSHA256(JCS(RawRecord)), lowercase hex
 FileHash          -> DoubleSHA256 digest
 PluginHash        -> DoubleSHA256 digest
 RecordsRoot       -> reviewed under core.block
 Block identity    -> reviewed under core.block
 ```
-
-Digest 的当前 wire representation 使用 lowercase hexadecimal，除非对应 spec 后续另有明确版本化规定。
 
 ## Runner/server boundary
 
@@ -111,16 +130,16 @@ runner/server 负责：
 
 ```text
 process / Cordis Context
+Plugin resolution by pluginHash
+Plugin execution
 Plugin artifact cache
 optional external Plugin artifact fetch
 Asset fetch/storage
 persistence
 transport/sync
-secret-key storage
+secret-key storage / signing UX
 sandbox/capability policy
 observability
 ```
 
-链内 embedded artifact 让小型/必要 Plugin 不依赖 external registry；外部 resolver 仍可作为可选镜像、加速或历史可获得性能力。
-
-Core spec 只规定 Plugin 自身确定性行为与显式验证输入。
+Core specs 只规定相同显式输入下的确定性数据/验证行为。

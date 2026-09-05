@@ -14,3 +14,18 @@ export {
   type PluginHash,
   type PluginRuntime,
 } from './plugin.js'
+
+export {
+  RECORD_SIGNING_DOMAIN,
+  RecordError,
+  canonicalRecord,
+  recordId,
+  signingPayload,
+  validateRawRecord,
+  validateRecord,
+  verifySignature,
+  type EntityPublicKey,
+  type RawRecord,
+  type Record,
+  type RecordId,
+} from './record.js'
