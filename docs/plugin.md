@@ -1,6 +1,6 @@
 # Plugin Model
 
-本文定义 LabourChain 当前 Plugin 数据模型与运行时验证边界。设计迁移以旧 `blockchain-service` 的实际代码为基准；只有为了把 schema-only `Protocol` 演化为 executable Plugin 所必需的部分才在 Core 中新增。
+本文定义 LabourChain 当前 Plugin 数据模型、artifact 存储方式与运行时验证边界。设计迁移以旧 `blockchain-service` 的实际代码为基准；只有为了把 schema-only `Protocol` 演化为 executable Plugin 所必需的部分才在 Core 中新增。
 
 历史事实依据见 [`source-baseline.md`](source-baseline.md)。
 
@@ -34,7 +34,7 @@ Record
 
 ## Plugin 数据
 
-旧 `Protocol` 主要描述 schema；当前 `Plugin` 在此基础上增加可执行 runtime 与完整 artifact identity。
+旧 `Protocol` 主要描述 schema；当前 `Plugin` 在此基础上增加 executable runtime、完整 artifact identity，以及可选的链内 artifact bytes。
 
 ```mermaid
 flowchart TB
@@ -44,12 +44,16 @@ flowchart TB
     P --> R["runtime"]
     P --> D["dependencies"]
     P --> F["files"]
+    P --> A["artifact? embedded bytes"]
+
+    F --> H["FileHash"]
+    A --> H
 
     P --> V["core.plugin runtime validation"]
     V --> VP["validatePlugin"]
     V --> CP["canonicalPlugin"]
     V --> PH["pluginHash"]
-    V --> VA["verifyArtifact"]
+    V --> VA["verifyArtifact / verifyEmbeddedArtifact"]
 ```
 
 第一版公共数据结构等价于：
@@ -66,6 +70,7 @@ interface Plugin {
   schema: string
   dependencies: PluginDependency[]
   files: PluginFile[]
+  artifact?: PluginArtifact
 }
 
 interface PluginDependency {
@@ -79,7 +84,11 @@ interface PluginFile {
   size: number
   hash: FileHash
 }
+
+type PluginArtifact = Record<string, string>
 ```
+
+`PluginArtifact` 的 key 是 canonical artifact path，value 是该文件 raw bytes 的 canonical RFC 4648 Base64 表示。
 
 ### 从 Protocol 到 Plugin
 
@@ -94,6 +103,7 @@ interface PluginFile {
 | 无 | `runtime` | executable Plugin 必需新增 |
 | 无 | `dependencies` | chain Plugin runtime dependency 必需新增 |
 | 无 | `files` | executable artifact identity 必需新增 |
+| 无 | `artifact?` | 允许小型 executable artifact 随 Plugin Record 上链 |
 
 `contributors`、源码地址、build inputs、release notes 等仍可由更高层事实表达，但不进入 Plugin runtime identity。
 
@@ -182,7 +192,7 @@ pluginHash
 
 ## Files
 
-`files[]` 描述参与 Plugin runtime/schema identity 的完整逻辑文件集合：
+`files[]` 描述参与 Plugin runtime/schema identity 的完整 executable artifact 文件集合：
 
 ```text
 path
@@ -202,30 +212,53 @@ FileHash = DoubleSHA256(raw file bytes)
 
 拒绝 absolute path、空 path、`.` / `..` segment、反斜杠、NUL、lone surrogate / invalid Unicode。
 
-file path 必须唯一。`files[]` 的输入顺序同样没有语义；canonicalization 时按 canonical path 的 UTF-8 lexicographical ascending order自动排序。
+file path 必须唯一。`files[]` 的输入顺序没有语义；canonicalization 时按 canonical path 的 UTF-8 lexicographical ascending order 自动排序。
 
-manifest/archive 本身不是 `files[]` 项，避免自引用 hash。tar/zip/gzip、mtime、uid/gid、filesystem mode、compression metadata 都不属于 Plugin identity。
+archive 本身不是 `files[]` 项，避免自引用 hash。tar/zip/gzip、mtime、uid/gid、filesystem mode、compression metadata 都不属于 Plugin identity。
 
-## Canonical Plugin 与 PluginHash
+## Embedded artifact
 
-对象字段顺序不属于 identity。第一版 canonical bytes 使用 RFC 8785 JSON Canonicalization Scheme（JCS）。
+`artifact?` 允许 Plugin Record 直接携带 executable artifact bytes：
+
+```json
+{
+  "artifact": {
+    "runtime.mjs": "ZXhwb3J0IGNvbnN0IGFuc3dlciA9IDQyCg==",
+    "schema.cue": "cGFja2FnZSBjb3JlX3BsdWdpbgo="
+  }
+}
+```
+
+规则：
+
+- key 必须是 `files[]` 中已声明的 canonical path；
+- value 必须是 canonical RFC 4648 Base64；
+- `artifact` 一旦存在，必须完整覆盖 `files[]`，不得缺失或增加文件；
+- Base64 解码后的 raw bytes 必须匹配对应 `size` 与 `FileHash`；
+- `runtime.entry` 与 `schema` 仍然必须属于该完整 artifact。
+
+因此一个同步到 Plugin Record 的节点可以直接从链数据恢复 executable bytes、验证并缓存，而不必先访问独立 Plugin registry。
+
+`artifact` 是内容的链内承载方式，不是新的 Plugin identity。相同 `files[]` 对应的 exact bytes，无论随 Record 内嵌、由本地 cache 提供，还是从外部镜像取得，都代表同一个 executable Plugin。
+
+## PluginHash 与 artifact storage 分离
+
+对象字段顺序不属于 identity。第一版 canonical identity bytes 使用 RFC 8785 JSON Canonicalization Scheme（JCS）。
 
 ```text
 Plugin input
   -> validate shape / values / uniqueness
+  -> validate optional embedded artifact
+  -> remove artifact storage field from identity form
   -> sort dependencies[] by name
   -> sort files[] by path
   -> RFC 8785 JCS
   -> UTF-8 bytes
 ```
 
-JCS 递归 canonicalize object properties，不重新排序 array；因此两个 set-like arrays 的排序由 Plugin 规则在 JCS 前完成。
-
 ```text
-PluginHash = DoubleSHA256(canonical Plugin bytes)
+PluginHash = DoubleSHA256(canonical Plugin identity bytes)
 ```
-
-serialized form 为 64-character lowercase hexadecimal。
 
 PluginHash 直接承诺：
 
@@ -239,11 +272,59 @@ file sizes
 FileHash values
 ```
 
-而每个 FileHash 又承诺 raw file bytes，因此 PluginHash transitively commits to exact executable artifact content。
+而每个 FileHash 又承诺 raw file bytes，因此 PluginHash 已经 transitively commits to exact executable artifact content。
+
+`artifact` 是否内嵌不改变 PluginHash。错误的 embedded bytes 会因为 size/FileHash 不匹配而被拒绝，而不会形成第二种 identity。
+
+## Artifact 与 Asset
+
+Plugin artifact 是运行 Plugin 本身所需的程序内容：
+
+```text
+runtime code
+schema
+wasm/native payload when supported
+必要的小型 runtime data
+```
+
+大型静态内容通常不应塞进 executable artifact，例如：
+
+```text
+图片 / 视频
+大型模型
+大型地图或词典
+数据集
+游戏资源包
+大型参考文档
+```
+
+这些内容可以由更高层 Asset 能力表达和存储，再由 Plugin 在运行时通过显式输入或领域协议取得。
+
+`core.plugin` 不依赖 Asset，也不理解 AssetId。关系是单向组合：上层 Asset/Runtime 可以为 Plugin 提供大型内容，Core Plugin identity 仍只处理自身 executable artifact。
+
+## Bundle size 规则
+
+小型、必要的 Plugin 默认适合把完整 artifact 随 Record 上链。Core bootstrap Plugin 尤其应保持小而自包含。
+
+构建工具应像 Vite 一样报告 artifact bundle size，并在总 raw bytes 大约超过 **500 KiB** 时给出 warning，例如：
+
+```text
+Plugin artifact: 612.4 KiB
+warning: large executable artifact; consider moving static resources to Assets
+```
+
+500 KiB 是开发工具建议阈值，不是 Core validity rule：
+
+```text
+499 KiB -> valid
+800 KiB -> valid, tooling warning
+```
+
+网络、Block 或 `core.plugin` validator 不得仅因为 artifact 大于该阈值而拒绝它。
 
 ## Runtime verification
 
-`core.plugin` 第一版只需要围绕 Plugin 数据提供确定性运行时能力：
+`core.plugin` 围绕 Plugin 数据提供确定性能力：
 
 ```text
 validatePlugin(plugin)
@@ -251,34 +332,28 @@ canonicalPlugin(plugin)
 fileHash(bytes)
 pluginHash(plugin)
 verifyArtifact(plugin, files, expectedPluginHash?)
+verifyEmbeddedArtifact(plugin, expectedPluginHash?)
 ```
 
-`verifyArtifact()` 至少检查：
+`validatePlugin()` 会验证 optional embedded artifact 的 canonical Base64、完整 file set、size 与 FileHash。
 
-1. Plugin shape、name、version、runtime、schema、dependency/file descriptors；
-2. dependency name 与 file path uniqueness；
-3. canonical paths、Unicode 与 safe integer 约束；
-4. `runtime.entry` 与 `schema` 均存在于 `files[]`；
-5. caller 提供的实际 file set 与声明完全相同；
-6. 每个 file 的 byte length 与 FileHash；
-7. canonical Plugin bytes 与 derived PluginHash；
-8. 如果 caller 给出 `expectedPluginHash`，要求完全一致。
+`verifyArtifact()` 用于 caller 显式提供 artifact bytes 的情况，例如本地 cache、Repo storage、HTTP mirror 或其他 resolver。
 
-`core.plugin` 不负责下载、缓存、持久化 artifact，也不负责 package-manager resolution。caller/runner 提供待验证的 Plugin 数据与实际 file bytes。
+`verifyEmbeddedArtifact()` 使用 Plugin 自身 `artifact` 字段恢复 bytes 并执行同一 exact verification。
+
+`core.plugin` 不负责下载、缓存、持久化、package-manager resolution 或 Asset fetch。
 
 ## Record 与 Block 边界
 
-Plugin 如何成为链上事实由通用 Record/Block 结构表达：
+Plugin 作为通用 Record 数据进入链：
 
 ```mermaid
 flowchart TB
-    P["Plugin data"]
+    P["Plugin data + optional artifact"]
     P --> R["Record.data"]
     R --> B["Block.records[]"]
     B --> C["chain confirmation"]
 ```
-
-`core.plugin` 到验证 Plugin 数据与 artifact identity 为止。
 
 以下问题不属于 `core.plugin`：
 
@@ -289,17 +364,37 @@ Plugin Record 何时可以被其他 Record 引用
 版本推荐 / deprecated / abandoned
 packer 或 network policy
 Core distribution / profile
-artifact fetch/cache/storage
+external artifact fetch/cache/storage
+Asset storage / provenance
 source/build provenance
 SDK / CLI / package publishing
 ```
 
-这些问题应在对应的 Record/Block ordering、network/runtime 或业务 package 中分别定义，而不是让 `core.plugin` 形成第二套状态机。
+## Genesis 与无 registry 启动
 
-## Genesis 边界
+Genesis 继续是一个 Block，初始 Plugin 继续通过 `Record.data = Plugin` 进入 `Block.records[]`。
 
-旧 Service 已经证明 Genesis 仍然是一个 Block，系统 Protocol 也是其中的 Records。
+MVP 中，为了让新节点只依赖 Genesis/链数据即可获得解释链所需的代码，初始 Core Plugins：
 
-当前迁移继续采用同一结构原则：初始 Plugin 通过 `Record.data = Plugin` 出现在 Genesis Block 中，而不是另建 `S0 Plugin artifact set` 或 issuer-less Plugin release channel。
+```text
+core.plugin
+core.record
+core.entity
+core.block
+```
 
-Genesis 中 RecordId、签名、Header 等具体 bootstrap 特例仍需在 `core.record` / `core.block` / Genesis 的独立审查中根据源代码逐项决定；`core.plugin` 不定义这些特例。
+应在各自 Plugin Record 中携带完整 embedded artifact。
+
+这样节点可以：
+
+```text
+读取 Genesis Plugin Record
+-> 解码 embedded artifact
+-> 校验 FileHash / PluginHash
+-> cache/load
+-> 继续解释和同步链
+```
+
+不需要在项目初期先建立 npm-style Plugin registry。未来 registry、mirror、CDN 或 P2P 可以作为分发加速与冗余，但不是 Core bootstrap 的前置条件。
+
+Genesis 的 RecordId、签名、Header 等 bootstrap 特例仍需在 `core.record` / `core.block` / Genesis 独立审查中决定；`core.plugin` 不定义这些特例。

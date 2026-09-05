@@ -1,6 +1,6 @@
 # `core.entity` Specification
 
-Status: defined for the current Entity identity primitive; domain ownership semantics remain outside Core.
+Status: defined for the current Entity identity primitive; domain ownership semantics remain outside Core. Record/Block Plugin-availability semantics remain pending their dedicated source-aligned review.
 
 ## Source
 
@@ -76,7 +76,7 @@ The codec is raw bytes ↔ Base58 text only. Do not add Base58Check checksum, ve
 
 Only `publicKey` may appear in chain data.
 
-Entity secret-key material must never be serialized into Entity Records, BlockHeaders, Plugin manifests/releases, or other on-chain structures.
+Entity secret-key material must never be serialized into Entity Records, BlockHeaders, Plugin data/artifacts, or other on-chain structures.
 
 If an implementation exposes key-generation, key-import, or signing helpers, those helpers belong to the Entity/identity side or an injected key provider and must preserve the local-only secret-key rule.
 
@@ -107,33 +107,36 @@ publicKey  -> Base58 Entity identity
 pluginHash -> DoubleSHA256 digest representation
 ```
 
-RecordId, PluginHash, BlockId, and RecordsRoot are not Base58 values merely because they identify chain objects.
+RecordId, PluginHash, Block identity, and RecordsRoot are not Base58 values merely because they identify chain objects.
 
 ## Core meaning
 
 `core.entity` does not assign Repository membership, resume/profile, Project, Asset ownership, labour, Plugin-release authorization, or packer-authorization semantics.
 
-Those semantics belong to Repo, LabourFlow, Board, `core.plugin` composition rules, runner/server policy, or other domain Plugins.
+Those semantics belong to Repo, LabourFlow, Board, runner/server policy, or other domain Plugins.
 
 ## Validation
 
-An ordinary Entity Record after Genesis must pass:
+An Entity payload interpreted by `core.entity` must satisfy:
 
-- `core.record` envelope/id/signature rules;
-- exact active Plugin resolution;
 - `core.entity` structural validation;
 - base58btc public-key decoding/validation;
+- `pluginHash` representation/integrity rules defined below;
 - any additional rules defined by a domain Plugin that builds on Entity.
+
+The common Record envelope, RecordId/signature verification, and the rule by which a Record obtains the exact Plugin that interprets its `data` belong to `core.record` / `core.block` composition. Their Plugin-availability semantics are still pending review and must not be expressed here as `activePluginState`, pre-Block-only resolution, N→N+1 activation, or same-Block rejection.
 
 For Ed25519 Entity identities, Base58-decoded `publicKey` must be exactly 32 bytes.
 
-`pluginHash` must be a valid 64-character lowercase-hex PluginHash matching the Record/plugin context that interprets this Entity payload.
+`pluginHash` must be a valid 64-character lowercase-hex PluginHash consistent with the Record/plugin context that ultimately interprets this Entity payload under the reviewed Record/Block rules.
 
 ## Genesis boundary
 
-Genesis directly contains the `core.entity` Plugin artifact in its initial Plugin set so Entity facts are usable from Block 1.
+Genesis remains a Block containing Records. Initial `core.entity` Plugin data therefore appears through a Plugin Record (`Record.data = Plugin`), not through an independent initial Plugin-state/S0 structure.
 
-Genesis does not need to create a Root Member, Repository, or packer business entity merely to bootstrap `core.entity`.
+For MVP bootstrap, that initial `core.entity` Plugin Record should carry the complete embedded executable artifact required by `spec/core-plugin.md`, just like the other initial Core Plugin Records. This lets a node obtain and verify the Plugin bytes from Genesis/chain data without first depending on an external Plugin registry.
+
+Whether Genesis also creates Root Member, Repository, or packer business entities, and the exact Genesis RecordId/signature/Header rules, remain part of the dedicated source-aligned Genesis/Record/Block review rather than `core.entity`.
 
 ## Historical encoding discrepancy
 
@@ -154,6 +157,8 @@ Reject at least:
 
 Domain-level authorization or membership failure is not a base Entity validation failure unless the corresponding domain Plugin explicitly composes it.
 
+Do not add failure cases based on unreviewed Plugin activation/availability state.
+
 ## Tests
 
 Meaningful tests should cover:
@@ -167,4 +172,4 @@ Meaningful tests should cover:
 - PluginHash remaining a digest rather than Base58 identity;
 - the historical Go-model/CUE `Data` mismatch remaining visible rather than silently normalized.
 
-Tests for Repository/Member business rules belong to their owning Plugins.
+Tests for Repository/Member business rules belong to their owning Plugins. Tests for Plugin availability/activation belong to the later reviewed Record/Block contract, not `core.entity`.

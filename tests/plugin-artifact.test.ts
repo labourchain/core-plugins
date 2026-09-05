@@ -5,6 +5,7 @@ import {
   pluginHash,
   validatePlugin,
   verifyArtifact,
+  verifyEmbeddedArtifact,
   type Plugin,
 } from '../src/plugin.js'
 
@@ -45,6 +46,16 @@ function fixture(): Plugin {
   }
 }
 
+function embeddedFixture(): Plugin {
+  return {
+    ...fixture(),
+    artifact: {
+      'runtime.mjs': Buffer.from(runtimeBytes).toString('base64'),
+      'schema.cue': Buffer.from(schemaBytes).toString('base64'),
+    },
+  }
+}
+
 function consumerFixture(): Plugin {
   return {
     ...fixture(),
@@ -81,6 +92,68 @@ describe('core.plugin artifact identity', () => {
     expect(decoder.decode(canonicalPlugin(plugin))).toBe(CANONICAL_PLUGIN)
     expect(pluginHash(plugin)).toBe(PLUGIN_HASH)
     expect(verifyArtifact(plugin, artifactFiles(), PLUGIN_HASH)).toBe(PLUGIN_HASH)
+  })
+
+  it('keeps PluginHash stable when the exact artifact is embedded on chain', () => {
+    const plain = fixture()
+    const embedded = embeddedFixture()
+
+    expect(validatePlugin(embedded).artifact).toEqual(embedded.artifact)
+    expect(decoder.decode(canonicalPlugin(embedded))).toBe(CANONICAL_PLUGIN)
+    expect(pluginHash(embedded)).toBe(pluginHash(plain))
+    expect(pluginHash(embedded)).toBe(PLUGIN_HASH)
+    expect(verifyEmbeddedArtifact(embedded, PLUGIN_HASH)).toBe(PLUGIN_HASH)
+    expect(verifyArtifact(embedded, artifactFiles(), PLUGIN_HASH)).toBe(PLUGIN_HASH)
+  })
+
+  it('requires an embedded artifact to exactly cover files and use canonical Base64', () => {
+    const missing = embeddedFixture()
+    delete (missing.artifact as Record<string, string>)['schema.cue']
+    expect(() => validatePlugin(missing)).toThrow(/file set/)
+
+    const extra = embeddedFixture()
+    ;(extra.artifact as Record<string, string>)['extra.txt'] = Buffer.from('extra').toString('base64')
+    expect(() => validatePlugin(extra)).toThrow(/file set/)
+
+    const nonCanonical = embeddedFixture()
+    ;(nonCanonical.artifact as Record<string, string>)['runtime.mjs'] = 'Zg'
+    expect(() => validatePlugin(nonCanonical)).toThrow(/canonical RFC 4648 Base64/)
+
+    const wrongBytes = embeddedFixture()
+    ;(wrongBytes.artifact as Record<string, string>)['runtime.mjs'] = Buffer.from(
+      encoder.encode('export const answer = 43\n'),
+    ).toString('base64')
+    expect(() => validatePlugin(wrongBytes)).toThrow(/hash mismatch/)
+  })
+
+  it('preserves valid artifact paths that are special JavaScript object keys', () => {
+    const protoBytes = encoder.encode('export default 1\n')
+    const protoBase64 = Buffer.from(protoBytes).toString('base64')
+    const protoPlugin: Plugin = {
+      name: 'test.proto-path',
+      version: '0.1.0',
+      runtime: { kind: 'js-esm', abi: 1, entry: '__proto__' },
+      schema: '__proto__',
+      dependencies: [],
+      files: [
+        {
+          path: '__proto__',
+          size: protoBytes.byteLength,
+          hash: fileHash(protoBytes),
+        },
+      ],
+      artifact: Object.fromEntries([['__proto__', protoBase64]]),
+    }
+
+    const validated = validatePlugin(protoPlugin)
+    expect(Object.prototype.hasOwnProperty.call(validated.artifact, '__proto__')).toBe(true)
+    expect(Object.keys(validated.artifact ?? {})).toEqual(['__proto__'])
+    expect(validated.artifact?.['__proto__']).toBe(protoBase64)
+    expect(() => verifyEmbeddedArtifact(validated)).not.toThrow()
+  })
+
+  it('rejects embedded verification when bytes are not carried by the Plugin', () => {
+    expect(() => verifyEmbeddedArtifact(fixture())).toThrow(/plugin\.artifact is required/)
   })
 
   it('canonicalizes object fields and unordered set-like arrays', () => {
@@ -253,7 +326,7 @@ describe('core.plugin artifact identity', () => {
     expect(() => validatePlugin(missingSchema)).toThrow(/plugin\.schema/)
   })
 
-  it('requires the exact declared file set and exact bytes', () => {
+  it('requires the exact externally supplied file set and bytes', () => {
     const missing = artifactFiles()
     missing.delete('schema.cue')
     expect(() => verifyArtifact(fixture(), missing)).toThrow(/file set/)
@@ -265,6 +338,30 @@ describe('core.plugin artifact identity', () => {
     const mutated = artifactFiles()
     mutated.set('runtime.mjs', encoder.encode('export const answer = 43\n'))
     expect(() => verifyArtifact(fixture(), mutated)).toThrow(/hash mismatch/)
+  })
+
+  it('does not impose the 500 KiB tooling warning as a validity limit', () => {
+    const largeBytes = new Uint8Array(500 * 1024 + 1)
+    const large: Plugin = {
+      name: 'test.large',
+      version: '0.1.0',
+      runtime: { kind: 'js-esm', abi: 1, entry: 'bundle.mjs' },
+      schema: 'bundle.mjs',
+      dependencies: [],
+      files: [
+        {
+          path: 'bundle.mjs',
+          size: largeBytes.byteLength,
+          hash: fileHash(largeBytes),
+        },
+      ],
+      artifact: {
+        'bundle.mjs': Buffer.from(largeBytes).toString('base64'),
+      },
+    }
+
+    expect(() => validatePlugin(large)).not.toThrow()
+    expect(() => verifyEmbeddedArtifact(large)).not.toThrow()
   })
 
   it('rejects an expected PluginHash that is malformed or does not match', () => {

@@ -31,7 +31,7 @@ Record
 
 ```mermaid
 flowchart TB
-    P["Plugin data"]
+    P["Plugin data + embedded artifact"]
     P --> PR["Record.data = Plugin"]
     PR --> G["Genesis Block.records[]"]
 
@@ -53,13 +53,58 @@ core.block
 
 `BlockHeader` 是 `core.block` 的公开类型，不存在独立 `core.block-header` Plugin。
 
-## Plugin artifact availability
+## Bootstrap artifact availability
 
-Genesis 中的 Plugin Record 仍然必须对应可验证的 executable Plugin artifact，否则节点无法运行这些 Plugin。
+新节点必须能够取得解释 Genesis 和后续链数据所需的 Core executable content。
 
-但 artifact 的 transport/package 形式不是 Genesis 的第二种链上数据结构。runner 可以通过配置、随发行包携带、object storage 或其他方式取得 artifact，然后使用 `core.plugin.verifyArtifact()` 对 Record.data 中的 Plugin 与实际 bytes 做 exact verification。
+MVP 不要求先建立独立 Plugin registry。初始 Core Plugin Records 应携带各自完整的 embedded artifact：
 
-具体“Genesis package 如何随节点发行”属于 Runtime/distribution，而不是 Core data model。
+```text
+Genesis Block
+└── Plugin Records
+    ├── core.plugin + artifact
+    ├── core.record + artifact
+    ├── core.entity + artifact
+    └── core.block + artifact
+```
+
+每个 embedded artifact 都按 `core.plugin` 规则验证：
+
+```text
+Base64 decode
+-> exact file set
+-> size
+-> FileHash
+-> PluginHash
+```
+
+因此节点可以从 Genesis/链数据恢复 Core runtime bytes，验证后写入本地 cache 并继续运行。
+
+这不是第二种 Genesis 数据结构。artifact 仍然只是 `Record.data = Plugin` 中的可选内容字段。
+
+## External distribution remains optional
+
+未来仍可以存在：
+
+```text
+Plugin registry
+mirror / CDN
+Repo/object storage
+P2P artifact distribution
+local cache
+```
+
+这些机制可以提高下载速度、冗余或历史可获得性，但相同 artifact bytes 必须验证到同一个 FileHash/PluginHash。
+
+对 MVP bootstrap 而言，它们不是节点启动的前置依赖。
+
+## Large resources
+
+初始 Core Plugins 应保持 executable artifact 小而自包含。大型静态数据不应因为“Core Plugin 需要使用”就自动塞进 Genesis。
+
+大型模型、数据集、图片、地图、词典等内容应优先作为上层 Asset/Runtime 资源，在实际运行时按需要取得。
+
+构建工具约 500 KiB 的 bundle warning 只用于发现不合理的大型 executable artifact，不改变 Genesis 或 Block validity。
 
 ## Bootstrap 特例
 
@@ -77,11 +122,13 @@ Genesis Header 使用当时的特殊签名流程
 
 这些都是需要在后续 `core.record` / `core.block` / Genesis review 中逐项判断的 Source Facts。
 
-本轮只撤销此前凭空加入的假设：
+本轮只冻结以下结构：
 
 ```text
-Genesis != 独立 initial Plugin state S0 package
-Genesis Plugin != issuer-less special Plugin release entry
+Plugin is Record.data
+Genesis is Block
+Genesis contains Plugin Records
+Core bootstrap Plugin Records carry complete embedded artifacts
 ```
 
 ## Current boundary
@@ -92,6 +139,8 @@ Genesis Plugin != issuer-less special Plugin release entry
 Plugin is Record.data
 Genesis is Block
 Genesis contains Records
+PluginHash identity is independent of artifact storage location
+MVP Core bootstrap does not require an external Plugin registry
 ```
 
 尚未在本轮重新冻结：
@@ -102,7 +151,6 @@ Genesis RecordId 特例是否继续保留
 bootstrap Record signature 规则
 Genesis Header 的当前字段与签名规则
 Root Member / Genesis Repository 是否继续保留
-Genesis artifact distribution 形式
 ```
 
 这些问题应在对应 Core 类型审查时以旧代码为第一依据，而不是由 `core.plugin` 处理。
