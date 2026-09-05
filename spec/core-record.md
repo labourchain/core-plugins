@@ -1,10 +1,6 @@
 # `core.record` Specification
 
-Status: **pending source-aligned review before implementation**.
-
-The Record envelope, historical RecordId behavior, and previously selected ordinary Record signing contract remain review inputs. However, the sections below that assume `activePluginState`, N→N+1 Plugin activation, same-Block Plugin rejection, Repository-issued Plugin releases, or standalone Genesis/S0 bootstrap belong to the superseded Plugin-state design and are **not normative implementation requirements**.
-
-Until the dedicated `core.record` review is complete, issue #7 is the implementation gate. Do not implement the superseded Plugin-availability assumptions from this document.
+Status: defined for the ordinary Record primitive. Genesis bootstrap exceptions remain outside this spec and are reviewed separately with `core.block` / Genesis.
 
 ## Source
 
@@ -19,13 +15,13 @@ Current design source:
 
 - `docs/source-baseline.md`
 - `docs/architecture.md`
-- `docs/plugin.md`
+- `docs/record.md`
 - `docs/genesis.md`
 - `docs/ordering.md`
 
-Historical source uses `protocol` / `protocolHash`. Current Record semantics use `plugin` / `pluginHash`.
+Historical `protocol / protocolHash` are migrated to `plugin / pluginHash`.
 
-The visible historical source reserves a `signature` field but does not define an ordinary Record signing payload or verifier. That is a recorded Source Gap, not an implementation requirement. `core.record@0.1.0` therefore defines an explicit current signing contract below.
+The historical repository does not establish ordinary Record signing bytes. The signing contract below is Current Design.
 
 ## Plugin identity
 
@@ -35,9 +31,37 @@ The current Core Plugin is:
 core.record@0.1.0
 ```
 
-## Current Record shape
+## Public data model
 
-The current Record envelope is:
+```ts
+export type RecordId = string
+export type EntityPublicKey = string
+
+export interface RawRecord {
+  plugin: string
+  pluginHash: string
+  createdBy: EntityPublicKey
+  createdAt: string
+  data: unknown
+}
+
+export interface Record extends RawRecord {
+  id: RecordId
+  signature: string
+}
+```
+
+`RawRecord` contains exactly:
+
+```text
+plugin
+pluginHash
+createdBy
+createdAt
+data
+```
+
+`Record` contains exactly:
 
 ```text
 id
@@ -49,25 +73,137 @@ signature
 data
 ```
 
-`plugin` is a human-readable exact release reference:
+Unknown top-level fields are invalid in `core.record@0.1.0`.
+
+## Record source semantics
+
+Record exposes two independent sources:
+
+```text
+plugin / pluginHash
+-> protocol source
+-> which chain Plugin/protocol produced or issued this Record
+
+createdBy / signature
+-> actor source
+-> which Entity confirms responsibility for this Record
+```
+
+`createdBy` does not identify the publisher of the referenced Plugin.
+
+## `plugin`
+
+`plugin` is a human-readable declaration:
 
 ```text
 name@version
 ```
 
-For example:
+The `name` and exact SemVer syntax follow the current `core.plugin` grammar.
+
+Examples:
 
 ```text
-core.block@0.1.0
+core.plugin@0.1.0
+labour.work@1.2.3
 ```
 
-`pluginHash` is the exact executable Plugin identity defined by `core.plugin`.
+`plugin` is signed fact content and therefore participates in RecordId.
 
-Historical `protocol` / `protocolHash` remain Source Fact only and must not appear in current-model APIs merely for naming compatibility.
+It is not runtime authority. Runner/runtime must not require resolving `pluginHash` and comparing the resolved Plugin name/version to this field.
 
-## RawRecord
+## `pluginHash`
 
-The unsigned/common Record content is:
+`pluginHash` is the exact machine identity of the Plugin/protocol that produced the Record.
+
+Wire representation:
+
+```text
+64-character lowercase hexadecimal
+```
+
+Runtime/composition resolves/executes the protocol by `pluginHash`.
+
+`core.record` validates only the representation. It does not resolve Plugin data, artifact bytes, dependencies, activation state or Block availability.
+
+## `createdBy`
+
+For ordinary Records, `createdBy` is an Entity public-key reference using the current `core.entity` base58btc representation.
+
+For Ed25519:
+
+```text
+base58btcDecode(createdBy).length == 32 bytes
+```
+
+No Base58Check checksum, version byte or implicit prefix is used.
+
+## `createdAt`
+
+`createdAt` is a signed fact string and participates in RecordId.
+
+`core.record@0.1.0` does not interpret it as trusted wall-clock time and does not derive ordering from it. It must be valid JCS/I-JSON string data.
+
+## `data`
+
+`data` is the complete Plugin-produced fact payload.
+
+It must be representable as deterministic RFC 8785 JCS / I-JSON data.
+
+Allowed JSON-domain values:
+
+```text
+null
+boolean
+finite number
+valid Unicode string
+array
+plain JSON object
+```
+
+Reject at least:
+
+```text
+undefined
+NaN
+Infinity / -Infinity
+BigInt
+function
+symbol
+host/class instance
+accessor property
+invalid Unicode / lone surrogate
+```
+
+Plain object means an object whose prototype is `Object.prototype` or `null` and whose enumerable string properties are ordinary data properties.
+
+Symbol-keyed properties are invalid.
+
+A domain Plugin may impose stronger payload rules; those rules are not part of `core.record` validation.
+
+## Canonical Record bytes
+
+`canonicalRecord(rawRecord)` must:
+
+1. validate the exact RawRecord shape and common field representations;
+2. validate that `data` is supported JCS/I-JSON data;
+3. construct the RawRecord identity object from exactly `plugin`, `pluginHash`, `createdBy`, `createdAt`, `data`;
+4. serialize it using RFC 8785 JSON Canonicalization Scheme;
+5. return exact UTF-8 bytes.
+
+Object property input order has no identity meaning.
+
+No Unicode normalization is applied.
+
+## RecordId
+
+```text
+RecordId = DoubleSHA256(canonicalRecord(rawRecord))
+```
+
+The serialized RecordId is 64-character lowercase hexadecimal.
+
+RecordId commits to the complete RawRecord:
 
 ```text
 plugin
@@ -77,208 +213,213 @@ createdAt
 data
 ```
 
-`id` derives from this RawRecord. `signature` confirms the resulting RecordId but is not part of the RecordId itself.
-
-## RecordId
-
-The current Record ID algorithm preserves the historical value-concatenation behavior while applying the current field semantics:
-
-1. JSON-marshal `data` using source-compatible deterministic behavior;
-2. concatenate `plugin`, `pluginHash`, `createdBy`, `createdAt`, and serialized `data` with `:` separators in that order;
-3. apply SHA-256 twice;
-4. represent the 32-byte digest as 64-character lowercase hexadecimal.
-
-Conceptually:
+It does not include:
 
 ```text
-RecordId = DoubleSHA256(current RawRecord values)
+id
+signature
 ```
 
-Renaming `protocol` → `plugin` and `protocolHash` → `pluginHash` does not add field names to the hash input; the algorithm hashes the ordered values.
-
-RecordId is a digest and must not be Base58-encoded.
-
-A TypeScript implementation must reproduce known source fixtures where equivalent historical/current field values are used. It must not assume arbitrary JavaScript object property ordering proves compatibility with the historical JSON behavior.
-
-## Entity author identity
-
-`createdBy` is an Entity public-key reference for ordinary post-Genesis Records.
-
-Ordinary Record author identity therefore uses the base58btc Entity public-key representation defined by `core.entity`.
-
-For Ed25519 Entity identity:
+This deliberately replaces the historical Go-specific:
 
 ```text
-base58btcDecode(createdBy).length == 32 bytes
+plugin:pluginHash:createdBy:createdAt:JSON(data)
 ```
 
-This Base58 rule applies because `createdBy` is an Entity identity reference. It does not apply to `id`, `pluginHash`, or `signature`.
+style with a cross-language JCS identity contract.
 
-Different Record types may assign different business meaning to the author Entity. Any earlier statement that `core.plugin` Records must resolve `createdBy` as a Repository issuer is superseded and must be reconsidered outside `core.plugin`.
+## Full `data` participation
 
-## Record signing payload
+`core.record` does not omit storage-like or Plugin-specific fields from `data` when deriving RecordId.
 
-`core.record@0.1.0` defines the fixed signing domain:
+Therefore when:
+
+```text
+Record.data = Plugin
+```
+
+and that Plugin contains `artifact`, the artifact field participates in RecordId because it is part of the actual chain fact.
+
+This is distinct from `PluginHash`, whose identity form intentionally excludes Plugin.artifact storage representation.
+
+Consequently, two Plugin Records may have the same PluginHash but different RecordId when one carries embedded artifact bytes and the other does not.
+
+## Record representation validation
+
+`validateRawRecord(value)` validates RawRecord structure/common representations and returns a normalized RawRecord value.
+
+`validateRecord(value)` must:
+
+1. validate exact Record shape;
+2. validate RawRecord fields;
+3. validate `id` as 64-character lowercase hexadecimal;
+4. validate `signature` as 128-character lowercase hexadecimal Ed25519 signature representation;
+5. derive `recordId(rawRecord)`;
+6. require supplied `id` to equal the derived RecordId;
+7. return the validated Record.
+
+`validateRecord()` does not cryptographically verify the signature.
+
+## Signing domain
 
 ```text
 RECORD_SIGNING_DOMAIN = "labourchain:record:v1:"
 ```
 
-For a valid 64-character lowercase-hex RecordId:
+For a valid RecordId:
 
 ```text
-recordIdBytes = hexDecode(record.id)
+recordIdBytes = hexDecode(recordId)
 ```
 
-`recordIdBytes` must be exactly 32 bytes.
+`recordIdBytes` is exactly 32 bytes.
 
-The exact signing payload is:
+## Signing payload
 
 ```text
-signingPayload(record.id)
+signingPayload(recordId)
 = UTF8(RECORD_SIGNING_DOMAIN)
   || recordIdBytes
 ```
 
-No JSON encoding, delimiter, newline, NUL byte, chain identifier, GenesisId, BlockId, or other runtime metadata is appended.
+No JSON, delimiter, newline, NUL, chain identifier, Block identifier or runtime metadata is appended.
 
-This contract intentionally signs the already-derived RecordId rather than serializing RawRecord a second time. The RecordId commits to `plugin`, `pluginHash`, `createdBy`, `createdAt`, and `data`; the fixed domain prefix prevents the same Ed25519 operation from being interpreted as a generic signature over an arbitrary 32-byte digest.
+## Signature
 
-## Signature generation and wire representation
-
-An ordinary Record signature is:
+Ordinary Record signature:
 
 ```text
 signatureBytes
 = Ed25519.Sign(authorSecretKey, signingPayload(record.id))
 ```
 
-The signing key must correspond to the Entity public key encoded in `createdBy`.
-
-The on-chain `signature` field is:
+Wire representation:
 
 ```text
 lowercase hex(signatureBytes)
 ```
 
-For Ed25519 it must therefore be exactly:
+Ed25519 signature is exactly 64 bytes / 128 lowercase hexadecimal characters.
 
-```text
-64 bytes
-128 lowercase hexadecimal characters
-```
-
-Signature is a cryptographic result, not an Entity identity and not a Base58 value.
-
-Secret-key storage and user/device signing UX belong to the runner/client/identity side. `core.record` only defines the deterministic signing bytes and verification rule.
+Secret-key storage and signing UX are outside `core.record`.
 
 ## Signature verification
 
-A trusted ordinary Record verifier must not verify the supplied `id` blindly.
+`verifySignature(record)` must:
 
-It must first derive the expected RecordId from the Record's RawRecord fields and require:
+1. call equivalent `validateRecord(record)` behavior, so RecordId is re-derived before signature verification;
+2. decode `createdBy` as base58btc and require exactly 32 Ed25519 public-key bytes;
+3. decode the 128-character lowercase-hex signature to 64 bytes;
+4. construct `signingPayload(record.id)`;
+5. perform Ed25519 verification;
+6. return the cryptographic verification result.
 
-```text
-record.id == recordId(rawRecord)
-```
+Malformed Record representation is an error. A well-formed Record with a cryptographically incorrect signature returns `false`.
 
-Only after that equality succeeds may it construct `signingPayload(record.id)` and verify the signature.
-
-Verification uses:
-
-```text
-publicKeyBytes = base58btcDecode(record.createdBy)
-signatureBytes = hexDecode(record.signature)
-
-Ed25519.Verify(
-  publicKeyBytes,
-  signingPayload(record.id),
-  signatureBytes
-)
-```
-
-The decoded public key must be exactly 32 bytes and the decoded signature exactly 64 bytes.
-
-Because `signature` is not part of RawRecord, changing only the signature does not change RecordId. It does make author confirmation invalid unless the replacement signature also verifies for the same `createdBy` and signing payload.
-
-Genesis bootstrap signature behavior is pending the dedicated source review; do not assume Genesis Plugin data bypasses Record solely because it is Plugin data.
-
-## Plugin resolution — pending review
-
-A Record carries:
+## Required public capabilities
 
 ```text
-plugin = name@version
-pluginHash
-```
-
-and must ultimately be interpreted by that exact Plugin identity.
-
-How the validator locates eligible Plugin Records at a given Block position is **not frozen** in this spec. In particular, do not assume before review:
-
-```text
-activePluginState
-pre-Block-only Plugin snapshot
-same-Block Plugin Record rejection
-N -> N+1 activation
-standalone Genesis S0
-```
-
-These semantics must be decided from the source-aligned Record/Block review.
-
-## Payload validation
-
-After the exact referenced Plugin is resolved under the reviewed Record/Block rules, `data` must satisfy that Plugin's schema/public types and deterministic validation behavior.
-
-`core.record` handles the common Record envelope and dispatches Plugin-specific payload validation to the exact Plugin identified by `pluginHash`.
-
-A domain Plugin may define references to Records, Assets, Projects, Repositories, or external objects. Those relations remain part of that Plugin's payload semantics. `core.record` does not assign a generic dependency meaning to them.
-
-## PluginHash integrity
-
-`pluginHash` must be:
-
-```text
-64-char lowercase hexadecimal DoubleSHA256 digest
-```
-
-and must identify the exact Plugin whose `name@version` equals the Record's `plugin` field.
-
-A matching Plugin name/version with a different PluginHash is not sufficient.
-
-## Required deterministic capabilities — pending final review
-
-Candidate runtime capabilities are:
-
-```text
+RecordError
+validateRawRecord(value)
+validateRecord(value)
+canonicalRecord(rawRecord)
 recordId(rawRecord)
 signingPayload(recordId)
 verifySignature(record)
-verifyRecord(record, pluginResolver)
 ```
 
-The exact `verifyRecord` resolver/state shape remains pending the dedicated Record/Block availability review and must not expose the removed `activePluginState` API by assumption.
+Public types:
 
-## Business relation boundary
+```text
+RecordId
+EntityPublicKey
+RawRecord
+Record
+```
 
-Labour / Asset DAG relations do not participate in generic `core.record` validity beyond deterministic payload rules explicitly defined by the referenced domain Plugin.
+Low-level JCS, DoubleSHA256, Base58 and Ed25519 key-construction helpers remain internal unless another Core spec establishes a shared primitive API.
 
-Core must not infer business relations from timestamps, Block position, Record array order, runtime arrival order, or unsigned metadata.
+## Plugin/runtime boundary
+
+`core.record` must not expose a `pluginResolver`, `activePluginState` or equivalent Plugin-state API.
+
+The composition is:
+
+```text
+Record
+-> core.record validates envelope / RecordId / actor signature
+-> runtime uses pluginHash to locate exact Plugin
+-> core.plugin verifies Plugin identity/artifact
+-> Plugin executes its own protocol-specific Record rules
+```
+
+`plugin = name@version` remains signed human-readable declaration and is not machine execution authority.
+
+## Out of scope
+
+`core.record` does not define:
+
+```text
+Plugin resolution/fetch/cache
+Plugin execution
+Plugin dependency resolution
+Plugin activation / lifecycle
+same-Block Plugin availability
+Block ordering / packing
+Genesis exceptions
+Repository issuer authorization
+Labour / Asset / Project DAG semantics
+persistence / network arrival
+trusted time semantics
+```
+
+## Genesis boundary
+
+Historical Genesis Source Facts include:
+
+```text
+Protocol Record.id = ProtocolHash
+createdBy = "Root"
+bootstrap Records without ordinary signature
+```
+
+These behaviors are not reusable branches in ordinary `core.record`.
+
+Genesis review may later define bootstrap-specific construction/recognition rules around the ordinary Record primitive.
 
 ## Failure cases
 
-Subject to the pending Plugin-resolution review, an ordinary Record must reject malformed common identity/signature representations, mismatched derived RecordId, invalid author signature, inconsistent `plugin` / `pluginHash`, and payload validation failure.
+Reject at least:
 
-There is no generic Core failure condition for Labour/Asset DAG topology or dependency ordering.
+- non-object or unknown/missing top-level fields;
+- malformed `plugin` declaration;
+- malformed `pluginHash`;
+- malformed base58btc `createdBy` or decoded key length != 32;
+- non-string / invalid-Unicode `createdAt`;
+- non-JCS/I-JSON `data`;
+- malformed RecordId representation;
+- supplied RecordId differing from derived RecordId;
+- malformed signature representation.
 
-Do not treat “Plugin is not active in pre-Block state” as a frozen failure case until the Record/Block review approves such a state model.
+`verifySignature()` additionally returns `false` for a well-formed but cryptographically invalid Ed25519 signature.
+
+Do not reject based on Plugin availability, Block position, business DAG topology or wall-clock interpretation.
 
 ## Tests
 
-The eventual Record tests should protect source-derived RecordId behavior, the approved signing contract, Entity/signature encodings, exact Plugin identity consistency, and payload validation.
+Meaningful tests must cover:
 
-Do not add same-Block Plugin rejection, N→N+1 activation, activePluginState, or S0 tests before the corresponding review approves those semantics.
-
-## Resolved source gap
-
-The historical repository does not establish ordinary Record signing bytes. The current domain-separated RecordId signing contract remains a previously selected current-model decision, but Genesis/bootstrap interaction with it must still be reviewed against source.
+- fixed JCS canonical RawRecord bytes and fixed RecordId fixture;
+- object property order independence in RawRecord/data;
+- `plugin`, `pluginHash`, `createdBy`, `createdAt`, and full `data` mutations changing RecordId;
+- embedded Plugin artifact presence changing RecordId while PluginHash can remain unchanged;
+- exact top-level shape;
+- plugin / PluginHash representation validation;
+- base58btc 32-byte Ed25519 public-key validation;
+- malformed JSON/JCS values and invalid Unicode rejection;
+- supplied RecordId mismatch rejection;
+- signing payload fixed domain/bytes;
+- valid Ed25519 signature verification;
+- wrong signature returning false;
+- signature not participating in RecordId;
+- no Plugin resolver/state dependency in `core.record` API.

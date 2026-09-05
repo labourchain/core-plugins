@@ -4,7 +4,7 @@ Status: **pending source-aligned review before implementation**.
 
 This file intentionally freezes only source-derived Block/BlockHeader/Merkle facts and current architecture boundaries. Earlier proposals for a new BlockHeader shape, BlockId, GenesisId linkage, `activePluginState`, N→N+1 Plugin activation, same-Block Plugin rejection, and `nextPluginState` belong to the superseded Plugin-state design and are not normative requirements.
 
-Issue #9 is the implementation gate.
+Ordinary `core.record` identity/signature semantics are already defined. Issue #9 remains the implementation gate for Block-specific behavior.
 
 ## Source
 
@@ -21,6 +21,7 @@ Current boundary source:
 
 - `docs/source-baseline.md`
 - `docs/architecture.md`
+- `docs/record.md`
 - `docs/block.md`
 - `docs/ordering.md`
 - `docs/plugin.md`
@@ -50,6 +51,18 @@ Current architecture keeps `BlockHeader` as a public type owned by `core.block`;
 
 Exact current field names/identity semantics require dedicated review and must not be inferred from the superseded design.
 
+## Record baseline
+
+Ordinary Record behavior is already fixed by `core.record`:
+
+```text
+RawRecord = plugin / pluginHash / createdBy / createdAt / data
+RecordId = DoubleSHA256(JCS(RawRecord))
+ordinary signature = domain-separated Ed25519 over RecordId
+```
+
+`pluginHash` is the machine-authoritative protocol identity carried by the Record. `core.block` must not redefine RecordId, Record author confirmation, or name/version authority.
+
 ## Source Merkle algorithm
 
 Historical `calcMerkleRoot(ids)` behaves as:
@@ -64,7 +77,7 @@ repeat until one value remains
 
 `left/right` are the historical RecordId text values.
 
-This algorithm is a source fact and should be preserved unless the Block review establishes a concrete migration reason to change it.
+This algorithm is a source fact and should be preserved unless the Block review establishes a concrete migration reason to change it. The later review must account for the fact that current RecordId values now come from JCS RawRecord identity rather than the historical Go-specific RecordId algorithm.
 
 ## Current confirmed responsibilities
 
@@ -81,7 +94,7 @@ business Labour/Asset/Project DAG is not generic Block semantics
 
 The exact executable capability list remains pending review. Historical Merkle calculation and Header verification are source inputs.
 
-## Plugin Record resolution — pending review
+## Plugin availability relative to Block state — pending review
 
 Plugin is ordinary Record data:
 
@@ -89,19 +102,20 @@ Plugin is ordinary Record data:
 Record.data = Plugin
 ```
 
-There is no independent `PluginRelease` or `activePluginState` object owned by `core.plugin`.
+A Record already declares its exact protocol machine identity through `pluginHash`. Runtime/composition resolves and executes the Plugin by that hash; `core.record` intentionally owns no resolver or activation state.
 
-Before `verifyBlock` or equivalent can be frozen, review must determine:
+There is no independent `PluginRelease` or `activePluginState` object owned by `core.plugin`, `core.record`, or `core.block` by default.
+
+Before `verifyBlock` or equivalent can be frozen, the Block/runtime-composition review must determine whether chain validity needs any rule about Plugin availability relative to Block position, including:
 
 ```text
-how each Record resolves its exact Plugin
-whether a Plugin Record earlier in the same Block may interpret a later Record
-whether same-Block Plugin dependencies may resolve
-whether a pre-Block Plugin snapshot is required
-how Genesis Plugin Records bootstrap interpretation
+whether a Plugin Record earlier in the same Block may be available to later processing
+whether same-Block Plugin dependencies may be available
+whether validation requires a pre-Block Plugin snapshot
+how Genesis Plugin Records bootstrap availability
 ```
 
-Do not assume N→N+1 activation or same-Block rejection.
+Do not assume N→N+1 activation or same-Block rejection. These are open Block/composition questions, not missing `core.record` semantics.
 
 ## Genesis — pending review
 
@@ -121,7 +135,7 @@ historical Header signing flow
 
 The previously designed standalone `GenesisManifest`, `GenesisId`, and initial `S0 Plugin artifact set` are removed assumptions.
 
-Any current Genesis linkage rule must be derived during the dedicated Record/Block/Genesis review.
+The ordinary Record contract is already fixed. Genesis review must now decide only whether historical bootstrap Record exceptions are retained, together with Block/Header bootstrap identity and signing behavior.
 
 ## BlockHeader signing / Block identity — pending review
 
@@ -180,4 +194,4 @@ new fixed Header JSON bytes
 new BlockId algorithm
 ```
 
-Future tests should start from historical Block/Merkle/Header fixtures and the reviewed current migration decisions.
+Future tests should start from historical Block/Merkle/Header fixtures, the already-defined current Record contract, and the reviewed current Block migration decisions.

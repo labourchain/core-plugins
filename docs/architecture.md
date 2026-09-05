@@ -179,11 +179,43 @@ signature
 data
 ```
 
-`data` 的具体结构由 Record 指向的 exact Plugin 定义。
+Record 同时表达两类来源：
 
-因此 Plugin、Entity、未来 Labour、Asset、Repository、Project 等都通过同一个 Record 机制进入链，不为不同业务类型建立独立确证通道。
+```text
+plugin / pluginHash
+-> 协议来源
+-> 这条 Record 由哪个链上 Plugin / 协议产生、签发
 
-RecordId、签名与 exact Plugin resolution 由 `core.record` spec 单独定义和审查。
+createdBy / signature
+-> 主体来源
+-> 哪个 Entity 对这条 Record 的产生负责并进行密码学确认
+```
+
+`pluginHash` 是 runtime/runner 使用的 exact Plugin identity；`plugin = name@version` 是给用户阅读和确认的声明。runner 只以 `pluginHash` 作为机器权威，不要求通过 hash 反查后再校验 name/version。可读 `plugin` 仍然属于被签名事实，因此参与 RecordId。
+
+当前 RecordId：
+
+```text
+RecordId = DoubleSHA256(JCS(RawRecord))
+```
+
+其中 RawRecord 完整包含：
+
+```text
+plugin
+pluginHash
+createdBy
+createdAt
+data
+```
+
+`id` 与 `signature` 不参与 RecordId。Record.data 必须满足通用 JSON/I-JSON/JCS 边界，并由产生该 Record 的具体 Plugin 进一步规定业务结构和执行规则。
+
+RecordId 承诺完整 `data`。因此当 `Record.data = Plugin` 且携带 embedded artifact 时，artifact storage 虽不进入 PluginHash，却会进入该条 Record 的 RecordId；这是 executable identity 与 fact identity 的有意分离。
+
+普通 Record 的作者确认使用 domain-separated Ed25519 signature over RecordId。详细模型见 [`record.md`](record.md) 与 [`../spec/core-record.md`](../spec/core-record.md)。
+
+`core.record` 不 resolve 或执行 Plugin。runtime/composition layer 根据 `pluginHash` 加载 exact Plugin，再由该 Plugin 判断自身协议是否允许产生/接受该 Record。
 
 ## Entity 是最小身份数据
 
@@ -225,7 +257,7 @@ Genesis Block
 
 MVP 的初始 Core Plugins 应携带完整 embedded artifact，使新节点只凭 Genesis/链数据即可取得解释链所需的 Core executable content。独立 registry、mirror、CDN 或 P2P 可以以后增加，但不是 bootstrap 前置基础设施。
 
-Genesis 中 RecordId、signature、Header 等具体 bootstrap 特例，应在 Genesis / `core.record` / `core.block` 审查中依据旧代码逐项决定。
+普通 `core.record` contract 不包含 Genesis 分支。历史 Protocol Record ID、`createdBy = "Root"`、无普通 Record signature 等 bootstrap 特例是否继续保留，由 Genesis / `core.block` 审查单独决定。
 
 ## Runtime 边界
 
@@ -257,31 +289,3 @@ Repo 管理 Repository、Member、Asset、源码/build provenance 等业务事�
 ### Labour / Work
 
 劳动事实、劳动确认、劳动成果与价值关系由后续 `labour.*` / `work.*` package 定义。Core 只保存并确认相应 Records。
-
-### Board
-
-Board 对 Records/Assets 做 Project 组织、计划、回顾和视图投影，不修改底层事实。
-
-### LabourFlow
-
-LabourFlow 提供事实输入、草稿、人工确认、签名与用户交互，不改变 Core 协议结构。
-
-## 迁移纪律
-
-后续逐个审查 Core Plugin 时统一使用三类判断：
-
-```text
-SOURCE
-旧 Service 已经存在
--> 原则上保留
-
-REQUIRED MIGRATION
-为了当前明确目标必须新增
--> 需要具体理由
-
-OUT OF CORE
-业务、发行、治理、SDK、存储、UI 等
--> 不进入对应 Core Plugin
-```
-
-这条纪律用于防止 Core 从最小确证内核重新膨胀成业务框架。

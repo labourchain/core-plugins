@@ -1,11 +1,12 @@
 # Ordering Specification
 
-Status: defined only for separation of Block confirmation order, business relation order, and runtime arrival order. Plugin Record availability semantics remain pending `core.record` / `core.block` review.
+Status: defined for separation of Block confirmation order, business relation order, and runtime arrival order. Ordinary `core.record` no longer owns Plugin availability/resolution policy; any chain-level same-Block availability rule remains part of `core.block` / runtime-composition review.
 
 ## Source
 
 - `docs/ordering.md`
 - `docs/architecture.md`
+- `docs/record.md`
 - `docs/plugin.md`
 - historical `blockchain-service` validation/storage paths
 
@@ -50,15 +51,20 @@ Runtime receive, queue or process order is not Core confirmation order and is no
 
 Host/runtime metadata must not acquire chain meaning unless a specific Plugin explicitly defines such meaning in its data contract.
 
-## Plugin Record availability is not frozen here
+## Plugin resolution and availability
 
-Plugin is ordinary Record data:
+A Record declares:
 
 ```text
-Record.data = Plugin
+plugin = human-readable name@version
+pluginHash = exact machine identity
 ```
 
-There is no independent `PluginRelease` / `activePluginState` object owned by `core.plugin`.
+`core.record` validates these fields as signed fact content but does not locate, activate or execute a Plugin.
+
+Runtime/composition resolves the exact Plugin by `pluginHash`. The readable `plugin` field is not machine authority and is not reverse-checked after hash resolution.
+
+There is no independent `PluginRelease` / `activePluginState` object owned by `core.plugin` or `core.record`.
 
 The previously specified rule:
 
@@ -69,16 +75,16 @@ Plugin confirmed in Block N
 
 is removed as an already-decided requirement.
 
-Before implementation, `core.record` / `core.block` review must determine from source and current executable requirements:
+If chain validation needs a rule for availability relative to Block position, `core.block` / runtime-composition review must determine it. Open questions include:
 
 ```text
-whether a Plugin Record can interpret a later Record in the same Block
-whether Plugin dependency resolution may use same-Block Plugin Records
-whether validation requires a pre-Block Plugin snapshot
-how Genesis bootstrap Plugin Records participate
+whether a Plugin Record earlier in the same Block may be available to later processing
+whether same-Block Plugin dependencies may be available
+whether validation needs a pre-Block Plugin snapshot
+how Genesis Plugin Records bootstrap availability
 ```
 
-No implementation issue may assume one answer before that review.
+Do not infer an answer from `core.record`; its ordinary contract is already fixed and intentionally state-free.
 
 ## Genesis
 
@@ -86,14 +92,16 @@ Genesis remains a Block containing Records, including initial `Record.data = Plu
 
 There is no separate S0 Plugin artifact-set ordering path.
 
+Ordinary Record identity/signature rules are defined by `core.record`; historical bootstrap exceptions remain part of the later Genesis / `core.block` review.
+
 ## Failure cases
 
-At this stage, ordering-related generic Core failure conditions are limited to rules established by the reviewed `core.block` contract itself.
+Ordering-related generic Core failure conditions are limited to rules established by the reviewed `core.block` contract itself.
 
-Business DAG topology and unreviewed Plugin-availability assumptions are not generic Core failure conditions.
+Business DAG topology and unreviewed Plugin-availability assumptions are not generic `core.record` failure conditions.
 
 ## Tests
 
 Ordering tests may cover Block representation/order and the absence of generic business-DAG semantics once `core.block` is implemented.
 
-Do not add tests for N->N+1 Plugin activation, same-Block Plugin rejection, or S0 dependency ordering until the corresponding Record/Block review explicitly approves those rules.
+Do not add N->N+1 activation, same-Block Plugin rejection, pre-Block snapshot or S0 dependency-order tests until `core.block` / runtime-composition review explicitly approves such rules.
