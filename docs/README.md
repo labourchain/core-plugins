@@ -127,5 +127,5 @@ RawRecord 包含 `plugin / pluginHash / createdBy / createdAt / data`。RecordId
 
 - `core.plugin` 已实现；
 - `core.record` 已实现；
-- `core.block` 与 Genesis 的部分 bootstrap 规则仍处于 source-first review gate；
-- `core.entity` 按其独立 spec 审查/实现。
+- `core.entity` 已实现；
+- `core.block` 与 Genesis 的部分 bootstrap 规则仍处于 source-first review gate。

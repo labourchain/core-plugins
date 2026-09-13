@@ -16,6 +16,15 @@ export {
 } from './plugin.js'
 
 export {
+  EntityError,
+  decodeBase58btc,
+  encodeBase58btc,
+  validateEntity,
+  type Entity,
+  type EntityPublicKey,
+} from './entity.js'
+
+export {
   RECORD_SIGNING_DOMAIN,
   RecordError,
   canonicalRecord,
@@ -24,7 +33,6 @@ export {
   validateRawRecord,
   validateRecord,
   verifySignature,
-  type EntityPublicKey,
   type RawRecord,
   type Record,
   type RecordId,

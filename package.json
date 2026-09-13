@@ -8,7 +8,8 @@
   "exports": {
     ".": "./lib/index.js",
     "./plugin": "./lib/plugin.js",
-    "./record": "./lib/record.js"
+    "./record": "./lib/record.js",
+    "./entity": "./lib/entity.js"
   },
   "files": [
     "lib/**/*.js",

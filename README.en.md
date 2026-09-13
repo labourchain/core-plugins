@@ -96,7 +96,7 @@ RecordId commits to the complete RawRecord, including complete `data`. Ordinary 
 
 `core.plugin` implements Plugin identity plus external and embedded artifact verification.
 
-`core.record` implements JCS RecordId, Record envelope validation, and author signature verification. `core.block` and Genesis Block/Header plus historical bootstrap Record exceptions remain under source-first review. The previously introduced Plugin activation/S0/Repository-issuer state model remains removed.
+`core.record` implements JCS RecordId, Record envelope validation, and author signature verification. `core.entity` implements public-key identity, the raw base58btc codec, and Entity validation. `core.block` and Genesis Block/Header plus historical bootstrap Record exceptions remain under source-first review. The previously introduced Plugin activation/S0/Repository-issuer state model remains removed.
 
 ## Documentation
 

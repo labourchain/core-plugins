@@ -94,7 +94,7 @@ RecordId 承诺完整 RawRecord，包括完整 `data`。普通 Record signature 
 
 `core.plugin` 已实现 Plugin identity、external/embedded artifact verification。
 
-`core.record` 已实现 JCS RecordId、Record envelope validation 与 author signature verification。`core.block` 与 Genesis 的 Block/Header 以及历史 bootstrap Record 例外仍按旧 Service 做 source-first review；此前引入的 Plugin activation/S0/Repository issuer 状态机已经撤销。
+`core.record` 已实现 JCS RecordId、Record envelope validation 与 author signature verification。`core.entity` 已实现 public-key identity、base58btc codec 与 Entity validation。`core.block` 与 Genesis 的 Block/Header 以及历史 bootstrap Record 例外仍按旧 Service 做 source-first review；此前引入的 Plugin activation/S0/Repository issuer 状态机已经撤销。
 
 ## 文档
 
