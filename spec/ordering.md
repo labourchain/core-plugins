@@ -1,6 +1,6 @@
 # Ordering Specification
 
-Status: defined for separation of Block confirmation order, business relation order, and runtime arrival order. Ordinary `core.record` no longer owns Plugin availability/resolution policy; any chain-level same-Block availability rule remains part of `core.block` / runtime-composition review.
+Status: defined for separation of Block confirmation order, business relation order, and runtime arrival / Plugin-resolution order.
 
 ## Source
 
@@ -16,7 +16,7 @@ Implementation must not collapse these into one sequence:
 
 1. Block confirmation/storage order;
 2. business Record relation order;
-3. runtime receive/process order.
+3. runtime receive/process and Plugin-resolution order.
 
 ## Block confirmation order
 
@@ -26,13 +26,15 @@ The Core Block Chain determines confirmation/storage order:
 Genesis -> B1 -> B2 -> ...
 ```
 
-Record array order inside a Block is part of Block representation and may affect the version-defined Block commitment/Merkle calculation.
+Record array order inside a Block is part of Block representation and participates in the Block's ordered RecordId commitment.
 
 Core must not infer labour causality, Project membership, Asset lineage, source/build lineage or other business meaning solely from Block position or Record array order.
 
 ## Business Record relations
 
 Labour/Asset/Project relations may form domain-defined DAGs through fields in `Record.data`.
+
+Records in the same Block may have real domain dependencies. A later labour Record may, for example, depend on output represented by another Record in that Block. Core does not validate or generalize that relation; tracing, input/output consistency and domain causality belong to the corresponding domain Plugin.
 
 Core does not define a common business `dependsOn` / `references` relation and does not use a generic business DAG as a Block-validity condition.
 
@@ -60,31 +62,24 @@ plugin = human-readable name@version
 pluginHash = exact machine identity
 ```
 
-`core.record` validates these fields as signed fact content but does not locate, activate or execute a Plugin.
+`core.record` and `core.block` validate signed/confirmed representation but do not locate, activate or execute a Plugin. Runtime/composition resolves the exact Plugin by `pluginHash`.
 
-Runtime/composition resolves the exact Plugin by `pluginHash`. The readable `plugin` field is not machine authority and is not reverse-checked after hash resolution.
+Normal composition should make a Plugin available before Records governed by it are produced. Publishing a Plugin for the first time in the same Block as Records that depend on it is therefore not recommended.
 
-There is no independent `PluginRelease` / `activePluginState` object owned by `core.plugin` or `core.record`.
+This recommendation is not a generic Block-validity rule. Core does not reject a Block merely because it contains both a Plugin Record and another Record using that Plugin's `pluginHash`.
 
-The previously specified rule:
-
-```text
-Plugin confirmed in Block N
--> active from Block N+1
-```
-
-is removed as an already-decided requirement.
-
-If chain validation needs a rule for availability relative to Block position, `core.block` / runtime-composition review must determine it. Open questions include:
+Core does not define:
 
 ```text
-whether a Plugin Record earlier in the same Block may be available to later processing
-whether same-Block Plugin dependencies may be available
-whether validation needs a pre-Block Plugin snapshot
-how Genesis Plugin Records bootstrap availability
+Plugin confirmed in Block N -> active in Block N+1
+pre-Block Plugin snapshot
+same-Block Plugin activation/inactivity
+earlier-in-same-Block Plugin activation
+Plugin dependency ordering by Block position
+activePluginState / nextPluginState
 ```
 
-Do not infer an answer from `core.record`; its ordinary contract is already fixed and intentionally state-free.
+Plugin availability and execution are runtime/composition concerns. Protocol-specific validity remains the responsibility of the resolved Plugin.
 
 ## Genesis
 
@@ -92,16 +87,16 @@ Genesis remains a Block containing Records, including initial `Record.data = Plu
 
 There is no separate S0 Plugin artifact-set ordering path.
 
-Ordinary Record identity/signature rules are defined by `core.record`; historical bootstrap exceptions remain part of the later Genesis / `core.block` review.
+Ordinary Record identity/signature rules are defined by `core.record`; historical bootstrap exceptions remain part of the dedicated Genesis review.
 
 ## Failure cases
 
-Ordering-related generic Core failure conditions are limited to rules established by the reviewed `core.block` contract itself.
+Block ordering failure conditions are limited to representation/commitment rules defined by `core.block` itself.
 
-Business DAG topology and unreviewed Plugin-availability assumptions are not generic `core.record` failure conditions.
+Business DAG topology, same-Block domain dependencies and Plugin publication/availability order are not generic Block failure conditions.
 
 ## Tests
 
-Ordering tests may cover Block representation/order and the absence of generic business-DAG semantics once `core.block` is implemented.
+Ordering tests may cover Block representation/order and the absence of generic business-DAG or Plugin-activation semantics.
 
-Do not add N->N+1 activation, same-Block Plugin rejection, pre-Block snapshot or S0 dependency-order tests until `core.block` / runtime-composition review explicitly approves such rules.
+Do not add N->N+1 activation, same-Block Plugin rejection, pre-Block snapshot, Plugin topological-ordering or S0 dependency-order tests.
