@@ -117,7 +117,7 @@ First registration, initial exceptions, duplicate registration, admission, and o
 
 `core.entity` is reduced to chain-level identity data plus the shared public-key primitive; registration/admission flow belongs to the Repo package.
 
-The ordinary `core.block` / `BlockHeader` contract has completed review and issue #9 is implementation-ready. Duplicate RecordIds inside one Block are invalid to remove the deterministic root ambiguity created by the retained historical odd-leaf Merkle duplication rule. Genesis bootstrap Record/Header exceptions remain under their dedicated review. The previously introduced Plugin activation/S0/Repository-issuer state model remains removed.
+`core.block` implements the ordinary Block/BlockHeader confirmation primitives, including ordered RecordId `recordsRoot`, the duplicate-RecordId integrity rule, JCS-derived BlockId, packer signature verification, and `verifyBlock`. Genesis bootstrap Record/Header exceptions remain under their dedicated review. The previously introduced Plugin activation/S0/Repository-issuer state model remains removed.
 
 ## Documentation
 

@@ -74,11 +74,11 @@ Entity {
 
 Core 不维护 Entity registry。首次注册、初始例外、重复注册、准入以及身份上链流程属于 Repo 包/composition layer。
 
-`Record.createdBy` 与未来 `BlockHeader.packer` 只在 Core 层验证 EntityPublicKey 表示和对应密码学签名；是否已被 Repo 注册/授权属于外部状态。
+`Record.createdBy` 与 `BlockHeader.packer` 只在 Core 层验证 EntityPublicKey 表示和对应密码学签名；是否已被 Repo 注册/授权属于外部状态。
 
 ## 当前 Block 原则
 
-ordinary `core.block` contract 已完成 review：
+ordinary `core.block` contract 已实现：
 
 ```text
 Block
@@ -94,7 +94,7 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 因此同一 Block 内 duplicate RecordId 被禁止。该规则只保证 confirmation container commitment 唯一，不承担业务 DAG 语义。
 
-BlockId、Header signing 与 `verifyBlock` 边界见 [`block.md`](block.md) / `../spec/core-block.md`。Genesis bootstrap 例外仍由独立 review 处理。
+实现提供 `recordsRoot`、JCS-derived `blockId`、domain-separated `blockSigningPayload`、`verifyHeader` 与 `verifyBlock`。Genesis bootstrap 例外仍由独立 review 处理。
 
 ## 文档地图
 
@@ -116,7 +116,7 @@ BlockId、Header signing 与 `verifyBlock` 边界见 [`block.md`](block.md) / `.
 
 ### [`block.md`](block.md)
 
-定义已审查的 ordinary Block confirmation contract：recordsRoot、duplicate RecordId integrity rule、BlockId、packer confirmation、ordering 与 `verifyBlock` boundary。
+定义已实现的 ordinary Block confirmation contract：recordsRoot、duplicate RecordId integrity rule、BlockId、packer confirmation、ordering 与 `verifyBlock` boundary。
 
 ### [`genesis.md`](genesis.md)
 
@@ -135,5 +135,5 @@ BlockId、Header signing 与 `verifyBlock` 边界见 [`block.md`](block.md) / `.
 - `core.plugin` 已实现；
 - `core.record` 已实现；
 - `core.entity` 已实现；
-- ordinary `core.block` contract 已完成 review，issue #9 implementation-ready；
+- ordinary `core.block` confirmation primitives 已实现；
 - Genesis bootstrap 例外仍待独立 review。
