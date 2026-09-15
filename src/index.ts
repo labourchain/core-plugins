@@ -38,3 +38,18 @@ export {
   type Record,
   type RecordId,
 } from './record.js'
+
+export {
+  BLOCK_SIGNING_DOMAIN,
+  BlockError,
+  blockId,
+  blockSigningPayload,
+  recordsRoot,
+  verifyBlock,
+  verifyHeader,
+  type Block,
+  type BlockHeader,
+  type BlockId,
+  type RawBlockHeader,
+  type RecordsRoot,
+} from './block.js'

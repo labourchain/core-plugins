@@ -115,7 +115,7 @@ Entity {
 
 `core.entity` 已收敛为 chain-level identity data 与共享 public-key primitive；注册/准入流程在 Repo 包完成。
 
-`core.block` 的 ordinary Block/BlockHeader contract 已完成 review，issue #9 可以进入实现；同一 Block 中 duplicate RecordId 被禁止，以消除历史 odd-leaf Merkle duplication 带来的确定性 root 歧义。Genesis 的 bootstrap Record/Header 例外仍由独立 review 处理。此前引入的 Plugin activation/S0/Repository issuer 状态机保持移除。
+`core.block` 已实现 ordinary Block/BlockHeader confirmation primitives，包括 ordered RecordId `recordsRoot`、duplicate RecordId integrity rule、JCS-derived BlockId、packer signature 与 `verifyBlock`。Genesis 的 bootstrap Record/Header 例外仍由独立 review 处理。此前引入的 Plugin activation/S0/Repository issuer 状态机保持移除。
 
 ## 文档
 

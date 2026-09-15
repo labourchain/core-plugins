@@ -9,7 +9,8 @@
     ".": "./lib/index.js",
     "./plugin": "./lib/plugin.js",
     "./record": "./lib/record.js",
-    "./entity": "./lib/entity.js"
+    "./entity": "./lib/entity.js",
+    "./block": "./lib/block.js"
   },
   "files": [
     "lib/**/*.js",
