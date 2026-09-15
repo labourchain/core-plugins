@@ -217,13 +217,24 @@ RecordId 承诺完整 `data`。因此当 `Record.data = Plugin` 且携带 embedd
 
 `core.record` 不 resolve 或执行 Plugin。runtime/composition layer 根据 `pluginHash` 加载 exact Plugin，再由该 Plugin 判断自身协议是否允许产生/接受该 Record。
 
-## Entity 是最小身份数据
+## Entity 是链级身份数据
 
-Core 的 Entity 只提供链级 public-key-rooted identity primitive。
+Core Entity 表示 public-key-rooted identity data：
 
-业务上的 Member、Repository、Organization 等不属于 Core 类型；它们可以在后续 package 中通过 Entity/Record 组合定义。
+```text
+Entity {
+  publicKey
+  introducedBy?
+}
+```
 
-Entity 的具体编码和签名关系由 `core.entity` / `core.record` spec 单独审查。
+`publicKey` 是稳定的 `EntityPublicKey`。`introducedBy` 仅记录可选的初始引荐来源，不承担 ownership、membership、多签、权限或永久信任语义。
+
+Member、Repository、Organization 等不是 Entity 的子类；它们在各自领域 Plugin 中引用 `EntityPublicKey` 作为稳定 LabourChain identity，并定义自己的字段和关系。
+
+`core.entity` 同时拥有 Core 统一的 base58btc Ed25519 public-key representation validation。`Record.createdBy`、`BlockHeader.packer` 与 `Entity.introducedBy` 使用同一表示，不重复实现各自的 key parser。
+
+详细模型见 [`../spec/core-entity.md`](../spec/core-entity.md)。
 
 ## Block 是 Record 的确证容器
 
@@ -237,7 +248,9 @@ Block
 
 Block 负责批量承诺 Records、前后区块连续性和 packer confirmation；它不承担 Labour/Asset DAG 的业务拓扑语义。
 
-Block/BlockHeader 的 hash、Merkle、签名、Genesis 特例与链选择边界由 `core.block` 审查决定。
+ordinary Block contract 已确定：历史 Header `hash` 正名为 ordered RecordId `recordsRoot`，BlockId 从 unsigned Header 派生，普通链通过前一 BlockId 连接，packer 使用 EntityPublicKey 并对 BlockId 做 domain-separated Ed25519 confirmation。Plugin availability、PoA authorization 与业务依赖不属于 standalone Block validity。
+
+详细模型见 [`block.md`](block.md) 与 [`../spec/core-block.md`](../spec/core-block.md)。Genesis bootstrap 例外仍由独立 review 决定。
 
 ## Genesis 继续是 Block
 
@@ -257,7 +270,7 @@ Genesis Block
 
 MVP 的初始 Core Plugins 应携带完整 embedded artifact，使新节点只凭 Genesis/链数据即可取得解释链所需的 Core executable content。独立 registry、mirror、CDN 或 P2P 可以以后增加，但不是 bootstrap 前置基础设施。
 
-普通 `core.record` contract 不包含 Genesis 分支。历史 Protocol Record ID、`createdBy = "Root"`、无普通 Record signature 等 bootstrap 特例是否继续保留，由 Genesis / `core.block` 审查单独决定。
+普通 `core.record` contract 不包含 Genesis 分支。历史 Protocol Record ID、`createdBy = "Root"`、无普通 Record signature 等 bootstrap 特例是否继续保留，由 Genesis review 单独决定。
 
 ## Runtime 边界
 

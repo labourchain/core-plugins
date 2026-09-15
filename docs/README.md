@@ -48,12 +48,10 @@ Record 是通用事实容器，同时记录协议来源与主体来源：
 
 ```text
 plugin / pluginHash -> 哪个链上协议产生/签发这条 Record
-createdBy / signature -> 哪个 Entity 对这条 Record 负责并确认
+createdBy / signature -> 哪个 EntityPublicKey 对这条 Record 负责并确认
 ```
 
 `pluginHash` 是 runner/runtime 使用的机器权威 identity；`plugin = name@version` 是被作者一并签名确认的人类可读声明。
-
-RecordId 当前定义为：
 
 ```text
 RecordId = DoubleSHA256(JCS(RawRecord))
@@ -61,7 +59,42 @@ RecordId = DoubleSHA256(JCS(RawRecord))
 
 RawRecord 包含 `plugin / pluginHash / createdBy / createdAt / data`。RecordId 承诺完整 `data`，普通 Record signature 使用 domain-separated Ed25519 signature over RecordId。
 
-`core.record` 不 resolve 或执行 Plugin。runtime/composition layer 根据 `pluginHash` 加载 exact Plugin，并由具体 Plugin 执行协议规则。
+`core.record` 不 resolve 或执行 Plugin。runtime/composition 根据 `pluginHash` 加载 exact Plugin，并由具体 Plugin 执行协议规则。
+
+## 当前 Entity 原则
+
+`core.entity` 只定义链级 public-key identity data 与共享 `EntityPublicKey` 表示：
+
+```text
+Entity {
+  publicKey
+  introducedBy?
+}
+```
+
+Core 不维护 Entity registry。首次注册、初始例外、重复注册、准入以及身份上链流程属于 Repo 包/composition layer。
+
+`Record.createdBy` 与未来 `BlockHeader.packer` 只在 Core 层验证 EntityPublicKey 表示和对应密码学签名；是否已被 Repo 注册/授权属于外部状态。
+
+## 当前 Block 原则
+
+ordinary `core.block` contract 已完成 review：
+
+```text
+Block
+├── header: BlockHeader
+└── records: ordered Record[]
+```
+
+历史 Merkle 算法继续保留，但 odd-leaf duplication 会造成：
+
+```text
+recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
+```
+
+因此同一 Block 内 duplicate RecordId 被禁止。该规则只保证 confirmation container commitment 唯一，不承担业务 DAG 语义。
+
+BlockId、Header signing 与 `verifyBlock` 边界见 [`block.md`](block.md) / `../spec/core-block.md`。Genesis bootstrap 例外仍由独立 review 处理。
 
 ## 文档地图
 
@@ -71,53 +104,27 @@ RawRecord 包含 `plugin / pluginHash / createdBy / createdAt / data`。RecordId
 
 ### [`architecture.md`](architecture.md)
 
-记录当前 Core 总体边界：
-
-- `Plugin / Record / Entity / Block` 的最小组合关系；
-- Plugin 是 `Record.data`；
-- embedded artifact 与 external artifact 使用同一个 content identity；
-- executable artifact 与大型 Asset 分层；
-- Record 的协议来源/主体来源与 JCS RecordId；
-- Genesis 继续是 Block；
-- Runtime/Repo/Labour 与 Core 的边界。
+记录当前 Core 总体边界：Plugin / Record / Entity / Block 的最小组合关系、artifact/Asset 分层、Record identity、Genesis、Runtime/Repo/Labour 与 Core 的边界。
 
 ### [`plugin.md`](plugin.md)
 
-定义 `core.plugin` 当前模型：
-
-- Protocol → executable Plugin 的必要迁移；
-- runtime / schema / exact dependencies / files；
-- FileHash / PluginHash / JCS canonicalization；
-- optional embedded artifact；
-- Base64/size/FileHash verification；
-- 约 500 KiB 的 tooling warning；
-- 大型内容拆 Asset；
-- MVP Core bootstrap 不依赖 Plugin registry。
+定义 `core.plugin` 当前模型：runtime / schema / exact dependencies / files、FileHash / PluginHash / JCS、optional embedded artifact、artifact verification、bundle-size guidance 与 Asset boundary。
 
 ### [`record.md`](record.md)
 
-定义 `core.record` 当前模型：
-
-- RawRecord / Record；
-- `plugin/pluginHash` 协议来源；
-- `createdBy/signature` 主体来源；
-- `RecordId = DoubleSHA256(JCS(RawRecord))`；
-- 完整 `data` 参与 fact identity；
-- base58btc Ed25519 `createdBy`；
-- domain-separated Record signature；
-- `core.record` 与 Plugin runtime/composition 的边界。
+定义 `core.record` 当前模型：RawRecord / Record、协议来源/主体来源、JCS RecordId、完整 `data`、EntityPublicKey `createdBy`、domain-separated signature 与 runtime boundary。
 
 ### [`block.md`](block.md)
 
-当前只保留 Block/BlockHeader 的 source-aligned review gate。具体 Block identity、签名与验证规则仍需后续审查。
+定义已审查的 ordinary Block confirmation contract：recordsRoot、duplicate RecordId integrity rule、BlockId、packer confirmation、ordering 与 `verifyBlock` boundary。
 
 ### [`genesis.md`](genesis.md)
 
-保留 `Genesis = Block`、`Plugin = Record.data` 的结构，并规定 MVP Core bootstrap Plugin Records 携带完整 embedded artifact。普通 Record contract 已固定；历史 bootstrap RecordId/createdBy/signature 特例是否继续保留仍待 Genesis/Block review。
+保留 `Genesis = Block`、`Plugin = Record.data` 的结构，并规定 MVP Core bootstrap Plugin Records 携带完整 embedded artifact。历史 bootstrap identity/signature 例外仍待独立 review。
 
 ### [`ordering.md`](ordering.md)
 
-只冻结 Block confirmation、业务关系和 runtime arrival order 的分离。Plugin availability/resolution 属于 runtime/Block composition，不进入 `core.record` 的通用 primitive。
+冻结 Block confirmation、业务关系和 runtime arrival order 的分离。Plugin availability/resolution 与 Repo registration policy 都不进入通用 Record/Block primitive。
 
 ## Spec 与实现
 
@@ -128,4 +135,5 @@ RawRecord 包含 `plugin / pluginHash / createdBy / createdAt / data`。RecordId
 - `core.plugin` 已实现；
 - `core.record` 已实现；
 - `core.entity` 已实现；
-- `core.block` 与 Genesis 的部分 bootstrap 规则仍处于 source-first review gate。
+- ordinary `core.block` contract 已完成 review，issue #9 implementation-ready；
+- Genesis bootstrap 例外仍待独立 review。

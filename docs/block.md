@@ -67,7 +67,20 @@ repeat until one value remains
 
 `left/right` 是 64 位小写十六进制 RecordId 的 UTF-8 文本，内部节点同样输出小写十六进制 DoubleSHA256。
 
-Record 数组顺序因此进入 Block commitment。空 Block 和重复 RecordId 不被 Core 额外禁止；没有具体需求时不新增历史不存在的集合约束。
+Record 数组顺序进入 Block commitment。空 Block 仍然允许。
+
+历史 odd-leaf duplication 会产生一个确定性的歧义：
+
+```text
+recordsRoot([A, B, C])
+== recordsRoot([A, B, C, C])
+```
+
+因为两者第一层都包含 `DoubleSHA256(A+B)` 与 `DoubleSHA256(C+C)`。这不是哈希碰撞，而是树构造本身的性质。
+
+为了继续保留历史 Merkle 算法，又不新增 leaf domain 或 `recordCount` Header 字段，当前 Core 直接禁止同一 Block 中出现重复 RecordId。`recordsRoot(recordIds)` 与 `verifyBlock(block)` 都必须拒绝 duplicate RecordId。
+
+这个约束只用于确保 confirmation container 能唯一承诺 ordered RecordId sequence，不代表 Block 在验证业务 DAG。
 
 Block commitment 只承诺 RecordId，不承诺 Record signature bytes；每条 Record 的 author signature 仍由 `verifyBlock` 独立验证。
 
@@ -106,7 +119,7 @@ UTF8("labourchain:block:v1:") || hexDecode(BlockId)
 
 因此旧 CUE Base64-like、runtime hex packer 编码和 Genesis/runtime 两套 JSON signing bytes 都不继续继承。
 
-PoA packer authorization 仍属于 network/runtime policy；`core.block` 只验证声明的 packer 确实对该 BlockId 签名。
+PoA packer authorization 与 Entity 注册/准入都属于外部 Repo/network/runtime policy；`core.block` 只验证声明的 packer 使用对应私钥对该 BlockId 签名。
 
 ## Confirmation order 与业务关系
 
@@ -145,12 +158,13 @@ ordinary `verifyBlock` 只验证确定性的确认容器：
 Block / Header representation
 -> ordinary Record envelope + RecordId
 -> ordinary Record author signatures
+-> RecordId uniqueness
 -> ordered recordsRoot
 -> Header BlockId
 -> packer signature
 ```
 
-它不验证 Plugin 执行、业务 DAG、PoA 授权、canonical-chain selection、网络同步、存储或 `previousBlock` 是否等于某个本地 chain head；最后一项需要外部链上下文。
+它不验证 Plugin 执行、业务 DAG、Entity 注册状态、PoA 授权、canonical-chain selection、网络同步、存储或 `previousBlock` 是否等于某个本地 chain head；最后一项需要外部链上下文。
 
 ## Minimal API
 

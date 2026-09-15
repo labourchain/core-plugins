@@ -92,11 +92,32 @@ RecordId commits to the complete RawRecord, including complete `data`. Ordinary 
 
 `core.record` does not resolve or execute Plugins and does not own activation or same-Block Plugin state. Runtime composition resolves by `pluginHash`, then the exact Plugin applies its own protocol rules.
 
+## Entity
+
+Entity is chain-level public-key identity data, not an abstract base class for Member, Repository, or Organization payloads, and Core does not maintain Entity registration state.
+
+```text
+Entity {
+  publicKey
+  introducedBy?
+}
+```
+
+`publicKey` is the stable `EntityPublicKey`; `introducedBy` is an optional introduction claim. Higher-level Worker / Repository / Organization facts reference the identity and define their own domain fields independently.
+
+First registration, initial exceptions, duplicate registration, admission, and on-chain registration flow belong to the Repo package/composition layer. `core.record` and `core.block` only validate EntityPublicKey representation and the corresponding cryptographic signatures.
+
+`core.entity` also owns the shared base58btc Ed25519 public-key representation validator used by Core fields such as `Record.createdBy` and `BlockHeader.packer`.
+
 ## Review status
 
-`core.plugin` implements Plugin identity plus external and embedded artifact verification.
+`core.plugin` implements Plugin identity, strict chain-data validation, and external/embedded artifact verification.
 
-`core.record` implements JCS RecordId, Record envelope validation, and author signature verification. `core.entity` implements public-key identity, the raw base58btc codec, and Entity validation. `core.block` and Genesis Block/Header plus historical bootstrap Record exceptions remain under source-first review. The previously introduced Plugin activation/S0/Repository-issuer state model remains removed.
+`core.record` implements JCS RecordId, Record envelope validation, and author signature verification while reusing the `core.entity` EntityPublicKey representation.
+
+`core.entity` is reduced to chain-level identity data plus the shared public-key primitive; registration/admission flow belongs to the Repo package.
+
+The ordinary `core.block` / `BlockHeader` contract has completed review and issue #9 is implementation-ready. Duplicate RecordIds inside one Block are invalid to remove the deterministic root ambiguity created by the retained historical odd-leaf Merkle duplication rule. Genesis bootstrap Record/Header exceptions remain under their dedicated review. The previously introduced Plugin activation/S0/Repository-issuer state model remains removed.
 
 ## Documentation
 
@@ -104,7 +125,7 @@ RecordId commits to the complete RawRecord, including complete `data`. Ordinary 
 - [`docs/architecture.md`](docs/architecture.md) — current Core architecture;
 - [`docs/plugin.md`](docs/plugin.md) — Plugin, artifact, Asset boundary, and runtime verification;
 - [`docs/record.md`](docs/record.md) — Record, JCS identity, and author confirmation;
-- [`docs/block.md`](docs/block.md) — Block source-review boundary;
+- [`docs/block.md`](docs/block.md) — ordinary Block confirmation contract;
 - [`docs/genesis.md`](docs/genesis.md) — Genesis = Block and Core bootstrap artifacts;
 - [`docs/ordering.md`](docs/ordering.md) — separation of confirmation, business, and runtime order;
 - [`spec/`](spec/README.md) — implementation projections.

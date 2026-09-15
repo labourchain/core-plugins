@@ -35,7 +35,7 @@ core.record@0.1.0
 
 ```ts
 export type RecordId = string
-export type EntityPublicKey = string
+import type { EntityPublicKey } from './entity.js'
 
 export interface RawRecord {
   plugin: string
@@ -50,6 +50,8 @@ export interface Record extends RawRecord {
   signature: string
 }
 ```
+
+`EntityPublicKey` is owned by `core.entity`. The `core.record` subpath may re-export that type for compatibility, but it does not define a second identity representation.
 
 `RawRecord` contains exactly:
 
@@ -130,6 +132,8 @@ Runtime/composition resolves/executes the protocol by `pluginHash`.
 
 For ordinary Records, `createdBy` is an Entity public-key reference using the current `core.entity` base58btc representation.
 
+Validation reuses the single Core `validateEntityPublicKey()` primitive rather than maintaining a second Base58/key-length implementation inside `core.record`.
+
 For Ed25519:
 
 ```text
@@ -148,16 +152,16 @@ No Base58Check checksum, version byte or implicit prefix is used.
 
 `data` is the complete Plugin-produced fact payload.
 
-It must be representable as deterministic RFC 8785 JCS / I-JSON data.
+It must be representable as deterministic RFC 8785 JCS / I-JSON data without retaining JavaScript values that collapse to the same canonical JSON representation.
 
 Allowed JSON-domain values:
 
 ```text
 null
 boolean
-finite number
+finite number except -0
 valid Unicode string
-array
+ordinary array
 plain JSON object
 ```
 
@@ -167,15 +171,19 @@ Reject at least:
 undefined
 NaN
 Infinity / -Infinity
+-0
 BigInt
 function
 symbol
 host/class instance
+Array subclass / custom Array prototype
 accessor property
 invalid Unicode / lone surrogate
 ```
 
 Plain object means an object whose prototype is `Object.prototype` or `null` and whose enumerable string properties are ordinary data properties.
+
+Ordinary array means an Array whose direct prototype is `Array.prototype`, whose indexed elements are dense enumerable own data properties, and which has no extra/symbol properties. Array subclasses are invalid even when `Array.isArray()` returns true.
 
 Symbol-keyed properties are invalid.
 
@@ -194,6 +202,8 @@ A domain Plugin may impose stronger payload rules; those rules are not part of `
 Object property input order has no identity meaning.
 
 No Unicode normalization is applied.
+
+`-0` is rejected before JCS serialization because ECMAScript serializes it as `0` while JavaScript runtime code can distinguish the two values. Record identity therefore never accepts two runtime-distinct numeric inputs that collapse only through minus-zero serialization.
 
 ## RecordId
 
@@ -307,8 +317,8 @@ Secret-key storage and signing UX are outside `core.record`.
 
 `verifySignature(record)` must:
 
-1. call equivalent `validateRecord(record)` behavior, so RecordId is re-derived before signature verification;
-2. decode `createdBy` as base58btc and require exactly 32 Ed25519 public-key bytes;
+1. call equivalent `validateRecord(record)` behavior, so RecordId and the shared Entity public-key representation are revalidated before signature verification;
+2. decode the already-validated `createdBy` using the shared `core.entity` base58btc codec;
 3. decode the 128-character lowercase-hex signature to 64 bytes;
 4. construct `signingPayload(record.id)`;
 5. perform Ed25519 verification;
@@ -332,12 +342,13 @@ Public types:
 
 ```text
 RecordId
-EntityPublicKey
 RawRecord
 Record
 ```
 
-Low-level JCS, DoubleSHA256, Base58 and Ed25519 key-construction helpers remain internal unless another Core spec establishes a shared primitive API.
+`EntityPublicKey` comes from `core.entity`; the Record subpath may re-export it but does not own a separate definition.
+
+Low-level JCS, DoubleSHA256 and Ed25519 SPKI construction remain internal. Base58btc and Entity public-key representation belong to `core.entity` and are reused here rather than duplicated.
 
 ## Plugin/runtime boundary
 
@@ -396,7 +407,7 @@ Reject at least:
 - malformed `pluginHash`;
 - malformed base58btc `createdBy` or decoded key length != 32;
 - non-string / invalid-Unicode `createdAt`;
-- non-JCS/I-JSON `data`;
+- non-JCS/I-JSON `data`, including `-0`, Array subclasses, sparse/extended arrays, accessors and symbol-keyed properties;
 - malformed RecordId representation;
 - supplied RecordId differing from derived RecordId;
 - malformed signature representation.
@@ -415,8 +426,8 @@ Meaningful tests must cover:
 - embedded Plugin artifact presence changing RecordId while PluginHash can remain unchanged;
 - exact top-level shape;
 - plugin / PluginHash representation validation;
-- base58btc 32-byte Ed25519 public-key validation;
-- malformed JSON/JCS values and invalid Unicode rejection;
+- shared `core.entity` base58btc 32-byte Ed25519 public-key validation;
+- malformed JSON/JCS values, `-0`, Array subclasses and invalid Unicode rejection;
 - supplied RecordId mismatch rejection;
 - signing payload fixed domain/bytes;
 - valid Ed25519 signature verification;

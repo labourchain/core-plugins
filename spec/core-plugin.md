@@ -101,6 +101,16 @@ type FileHash = string
 
 `Plugin` is the public data type. `PluginManifest` or `PluginRelease` must not exist as a second public entity for the same logical data.
 
+## Structural trust boundary
+
+Plugin data is chain-facing deterministic data, not arbitrary JavaScript object state.
+
+For `Plugin`, `runtime`, each dependency, each file descriptor, and embedded `artifact` objects, validation requires plain objects whose present fields are enumerable own data properties. Reject class/host instances, accessors, symbol-keyed properties, hidden/non-enumerable fields, and unknown fields.
+
+`dependencies[]` and `files[]` must be dense ordinary arrays without extra/symbol properties or accessor elements. Sparse arrays are invalid even if their visible indexed values would otherwise appear equivalent after JavaScript iteration.
+
+These checks prevent non-JSON JavaScript structures from collapsing into different canonical bytes and are part of the trust boundary, not optional style validation.
+
 ## Protocol migration
 
 Historical fields map as follows:
@@ -231,7 +241,7 @@ Archive/compression/host metadata is excluded from Plugin identity.
 
 ## Embedded artifact
 
-`artifact` is optional. When present it is an object:
+`artifact` is optional. When present it is a plain data object:
 
 ```text
 canonical path -> canonical RFC 4648 Base64
@@ -239,7 +249,7 @@ canonical path -> canonical RFC 4648 Base64
 
 Requirements:
 
-1. `artifact` must be an object, not an array/null;
+1. `artifact` must be a plain object, not an array/null/class/accessor-backed object;
 2. every key must be a canonical artifact path;
 3. every key must correspond to exactly one `files[]` descriptor;
 4. the object must contain exactly the complete `files[]` path set;
@@ -259,12 +269,13 @@ An embedded artifact with missing/extra paths, alternate/noncanonical Base64, wr
 It must:
 
 1. validate the complete Plugin shape, including optional embedded artifact if present;
-2. reject duplicate dependency names/file paths;
-3. sort `dependencies[]` by dependency name;
-4. sort `files[]` by path;
-5. omit the `artifact` storage field from the identity form;
-6. serialize the remaining Plugin descriptor using RFC 8785 JCS;
-7. return exact UTF-8 canonical bytes.
+2. reject non-plain objects, sparse/extended arrays, accessors, symbol-keyed or hidden data;
+3. reject duplicate dependency names/file paths;
+4. sort `dependencies[]` by dependency name;
+5. sort `files[]` by path;
+6. omit the `artifact` storage field from the identity form;
+7. serialize the remaining Plugin descriptor using RFC 8785 JCS;
+8. return exact UTF-8 canonical bytes.
 
 Therefore:
 
@@ -324,7 +335,9 @@ It performs no hidden source clone, build, package-manager install, persistence 
 
 `verifyEmbeddedArtifact(plugin, expectedPluginHash?)` requires `plugin.artifact` to exist.
 
-It must decode the embedded Base64 object into exact raw bytes and apply the same file-set/size/FileHash/PluginHash verification as `verifyArtifact()`.
+Complete embedded file-set/Base64/size/FileHash validation is already part of `validatePlugin()`. `verifyEmbeddedArtifact()` must apply that complete validation, require the artifact to be present, derive PluginHash from the validated identity form, compare optional `expectedPluginHash`, and return the calculated PluginHash.
+
+The implementation should not decode/hash the same embedded bytes a second time merely to duplicate checks already completed by `validatePlugin()`.
 
 If `artifact` is absent, `verifyEmbeddedArtifact()` rejects with an explicit missing-artifact error; the caller may instead resolve bytes externally and call `verifyArtifact()`.
 
@@ -377,7 +390,9 @@ Exact Genesis RecordId/signature/Header behavior remains deferred to its dedicat
 
 Reject at least:
 
-- non-object or unknown/missing Plugin fields;
+- non-plain or unknown/missing Plugin fields;
+- class/host/accessor/symbol/non-enumerable Plugin structures;
+- sparse or extended dependency/file arrays;
 - invalid Plugin/dependency name or version;
 - malformed runtime descriptor;
 - invalid schema/runtime/file path or Unicode;
@@ -404,8 +419,10 @@ Meaningful tests must cover:
 - embedded exact file-set enforcement;
 - embedded noncanonical/malformed Base64 rejection;
 - embedded byte size/FileHash mismatch rejection;
-- `verifyEmbeddedArtifact()` success and missing-artifact rejection;
+- `verifyEmbeddedArtifact()` success, invalid embedded-data rejection and missing-artifact rejection;
 - external `verifyArtifact()` behavior remains equivalent;
+- plain-object/data-property trust boundary;
+- sparse/extended dependency/file array rejection;
 - object-property and dependency/file input order independence;
 - duplicate dependency/file rejection;
 - name/version/path/Unicode/numeric constraints;

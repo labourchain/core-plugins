@@ -1,6 +1,6 @@
 # `core.entity` Specification
 
-Status: defined for the current Entity identity primitive; domain ownership semantics remain outside Core. Ordinary Record identity/signature behavior is defined by `core.record`; Plugin availability relative to Block state remains outside `core.entity`.
+Status: **defined for the current chain-level identity data primitive**.
 
 ## Source
 
@@ -12,167 +12,216 @@ Historical source:
 Current design source:
 
 - `docs/architecture.md`
-- `docs/plugin.md`
 - `docs/record.md`
-- `docs/genesis.md`
+- the Core consistency review
 
-Historical source uses `protocolHash`; current Entity semantics use `pluginHash`.
+Historical Entity contained `publicKey`, `contributors`, `protocolHash`, optional `type`, and the historical Go model additionally exposed generic `Data`. Current Core keeps only fields that still have a distinct identity-layer responsibility.
 
-## Plugin identity
+## Responsibility
 
-The current Core Plugin is:
+`core.entity` defines LabourChain's public-key-rooted identity data and the shared `EntityPublicKey` representation used by Core.
 
-```text
-core.entity@0.1.0
-```
-
-It provides the minimal public-key-rooted identity primitive used by domain Plugins such as Repository and Member.
-
-## Historical source shape
-
-The historical CUE shape contains:
+An Entity is not an abstract base object that Member, Repository, Organization, or other domain payloads extend. Higher-level Plugins reference an `EntityPublicKey` as a stable identity and define their own data independently.
 
 ```text
-publicKey
-contributors
-protocolHash
-type?
+EntityPublicKey
+    ↓ identity reference
+Worker / Repository / Organization / future domain facts
 ```
 
-The historical Go `Entity` model additionally contains generic optional `Data`.
+`core.entity` does not own registration state or onboarding policy. Initial exceptions, first registration, duplicate registration handling, on-chain admission flow, and rules about whether an identity must already be registered before acting are defined by the Repo package/composition layer.
 
-That mismatch remains Source Fact only.
+## Public data model
 
-## Current base shape
+```ts
+export type EntityPublicKey = string
 
-The current Entity payload shape is:
+export interface Entity {
+  publicKey: EntityPublicKey
+  introducedBy?: EntityPublicKey
+}
+```
+
+`publicKey` is the identity represented by this Entity fact.
+
+`introducedBy`, when present, declares the Entity identity through which this identity claims to have been introduced. Core validates only its public-key representation. Whether that declaration is accepted as the initial introduction belongs to the Repo registration flow.
+
+## Removed legacy fields
+
+### `pluginHash`
+
+Removed. Protocol provenance already belongs to the enclosing Record:
 
 ```text
-publicKey
-contributors
-pluginHash
-type?
+Record.plugin / Record.pluginHash
 ```
 
-`pluginHash` is the exact Plugin identity governing this Entity payload. It is a DoubleSHA256 digest, not an Entity public key.
+Repeating Plugin identity inside Entity would create a second source of truth.
 
-The historical Go-only `Data` field is not silently added to the current base Entity schema.
+### `type`
 
-## Entity key model
+Removed. Worker, Repository, Organization, Member relations, and other domain meanings are defined by their owning Plugins rather than a Core Entity discriminator.
 
-Entity identity is the only Core identity class that owns a cryptographic key pair.
+### `contributors[]`
 
-```text
-Entity public key -> Base58
-Entity secret key -> Base58, local only
-```
+Replaced by optional singular `introducedBy`.
 
-Base58 means base58btc / Bitcoin alphabet:
+The historical plural field did not prove multi-party consent and had no Core authorization semantics. Multi-party endorsement, later invitations, registration history, or other social relations should be represented as explicit higher-level facts when needed.
+
+## Public-key representation
+
+`EntityPublicKey` is a raw Ed25519 public key encoded with the Bitcoin/base58btc alphabet:
 
 ```text
 123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz
 ```
 
-The codec is raw bytes ↔ Base58 text only. Do not add Base58Check checksum, version bytes, or an implicit prefix.
+For every Entity public-key reference:
 
-Only `publicKey` may appear in chain data.
+```text
+base58btcDecode(value).length == 32 bytes
+```
 
-Entity secret-key material must never be serialized into Entity Records, BlockHeaders, Plugin data/artifacts, or other on-chain structures.
+A 32-byte Ed25519 key encodes to at most 44 Base58 characters; impossible longer input may be rejected before BigInt decoding.
 
-If an implementation exposes key-generation, key-import, or signing helpers, those helpers belong to the Entity/identity side or an injected key provider and must preserve the local-only secret-key rule.
+No Base58Check checksum, version byte, or implicit prefix is used.
 
-## Public-key references
-
-Fields in other Plugins whose semantic type is an Entity public-key reference use the same base58btc representation.
-
-Examples include, when their schema meaning is Entity identity:
+Other Core fields whose semantic type is an Entity identity use the same representation:
 
 ```text
 Record.createdBy
 BlockHeader.packer
-Repository.publicKey
-Member.publicKey
-contributors[]
+Entity.introducedBy
 ```
 
-Do not generalize Base58 to hash-derived IDs.
+Hash-derived identifiers such as PluginHash, RecordId, BlockId, and RecordsRoot remain digest values rather than Base58 identities.
 
-## Digest boundary
+Secret-key material is local-only and must never appear in Entity or other on-chain Core data.
 
-`pluginHash` is a DoubleSHA256-derived Plugin artifact identity, not an Entity identity.
+## Identity fact and registration boundary
 
-Therefore:
+An Entity value may be carried as ordinary Record data:
 
 ```text
-publicKey  -> Base58 Entity identity
-pluginHash -> DoubleSHA256 digest representation
+Record.data = Entity
 ```
 
-RecordId, PluginHash, Block identity, and RecordsRoot are not Base58 values merely because they identify chain objects.
+The enclosing Record remains responsible for protocol and actor provenance:
 
-## Core meaning
+```text
+Record.plugin / pluginHash
+-> protocol provenance
 
-`core.entity` does not assign Repository membership, resume/profile, Project, Asset ownership, labour, Plugin-release authorization, or packer-authorization semantics.
+Record.createdBy / signature
+-> actor that cryptographically confirms the Record
+```
 
-Those semantics belong to Repo, LabourFlow, Board, runner/server policy, or other domain Plugins.
+`introducedBy` is independent from `Record.createdBy`.
+
+Core does not infer registration from a valid signature and does not maintain a registry inside `core.entity`, `core.record`, or `core.block`.
+
+The Repo package/composition layer owns at least:
+
+```text
+initial/root registration exceptions
+who may register an Entity
+first-registration / duplicate-registration rules
+whether introducedBy is accepted as initial provenance
+whether an acting Entity must already be on-chain
+registration/onboarding workflow
+```
+
+Therefore a cryptographically valid `Record.createdBy` or `BlockHeader.packer` is not, by Core validation alone, proof that Repo registration policy has accepted that identity.
+
+`introducedBy` does not by itself mean:
+
+```text
+ownership
+membership
+multi-signature approval
+authorization threshold
+permanent trust
+```
+
+## Domain composition
+
+Higher-level domain data references Entity identities; it does not inherit the Entity object.
+
+Examples:
+
+```text
+Worker fact       -> references worker EntityPublicKey
+Repository fact   -> references repository EntityPublicKey
+Organization fact -> references organization EntityPublicKey
+Member relation   -> relates Worker/Repository identities
+```
+
+No inheritance, mixin, generic Entity base class, or schema-extension mechanism is required.
 
 ## Validation
 
-An Entity payload interpreted by `core.entity` must satisfy:
+`validateEntityPublicKey(value)` requires a non-empty Base58btc string decoding to exactly 32 Ed25519 bytes and returns the validated `EntityPublicKey`.
 
-- `core.entity` structural validation;
-- base58btc public-key decoding/validation;
-- `pluginHash` representation/integrity rules defined below;
-- any additional rules defined by a domain Plugin that builds on Entity.
+`validateEntity(value)` requires:
 
-When Entity data is carried by a Record, the common envelope, JCS RecordId and `createdBy` author signature are validated by the defined `core.record` contract.
+1. a plain object;
+2. exactly required `publicKey` plus optional `introducedBy`;
+3. all present properties to be enumerable own data properties;
+4. no symbol-keyed, hidden, accessor, or extra fields;
+5. `publicKey` to satisfy `validateEntityPublicKey`;
+6. when present, `introducedBy` to satisfy the same representation.
 
-`core.record` does not resolve or execute the Record's protocol Plugin. Runtime/composition uses the Record's `pluginHash` as machine authority. Any chain-level policy about Plugin availability relative to Block position belongs to `core.block` / runtime composition, not `core.entity`.
+Explicit `introducedBy: undefined` is invalid because presence declares the field and a valid Entity public key is required.
 
-For Ed25519 Entity identities, Base58-decoded `publicKey` must be exactly 32 bytes.
+Unknown historical/domain fields such as `contributors`, `pluginHash`, `type`, generic `Data`, or secret-key fields are invalid.
 
-`pluginHash` must be a valid 64-character lowercase-hex PluginHash according to the Entity payload contract. `core.entity` does not turn a human-readable name/version into machine authority.
+## Public API
 
-## Genesis boundary
+```text
+EntityError
+encodeBase58btc(bytes)
+decodeBase58btc(value)
+validateEntityPublicKey(value)
+validateEntity(value)
+```
 
-Genesis remains a Block containing Records. Initial `core.entity` Plugin data therefore appears through a Plugin Record (`Record.data = Plugin`), not through an independent initial Plugin-state/S0 structure.
+Public types:
 
-For MVP bootstrap, that initial `core.entity` Plugin Record should carry the complete embedded executable artifact required by `spec/core-plugin.md`, just like the other initial Core Plugin Records. This lets a node obtain and verify the Plugin bytes from Genesis/chain data without first depending on an external Plugin registry.
+```text
+Entity
+EntityPublicKey
+```
 
-The ordinary Record contract is already defined by `core.record`. Whether Genesis retains historical exceptions such as special RecordId, `createdBy = "Root"`, unsigned bootstrap Records, Root Member/Repository creation, or special Header behavior remains part of the dedicated Genesis / `core.block` review.
-
-## Historical encoding discrepancy
-
-The historical source CUE regex accepts a Base64-like alphabet, while visible historical Go code elsewhere uses hexadecimal Ed25519 public-key strings.
-
-Current Design explicitly standardizes Entity public-key identity on base58btc. This is a deliberate current contract, not a claim that the visible legacy Go implementation already used Base58 everywhere.
+Do not add identity registries, membership APIs, invitation managers, provenance graphs, inheritance helpers, or Repo registration policy to `core.entity`.
 
 ## Failure cases
 
 Reject at least:
 
-- missing required base Entity fields;
-- malformed base58btc `publicKey`;
-- a decoded public key whose length is not 32 bytes for Ed25519;
-- malformed `pluginHash`;
-- structurally invalid `contributors` / optional `type` values under the current schema;
-- accidental inclusion of secret-key material in serialized Entity data.
+- non-object Entity input;
+- missing `publicKey`;
+- extra or removed legacy/domain fields;
+- malformed Base58btc public-key references;
+- public-key references decoding to a length other than 32 bytes;
+- impossible overlong EntityPublicKey encodings;
+- malformed `introducedBy` when present;
+- explicit `introducedBy: undefined`;
+- symbol-keyed, hidden, accessor, or non-data-property Entity shapes;
+- secret-key material serialized into Entity data.
 
-Domain-level authorization or membership failure is not a base Entity validation failure unless the corresponding domain Plugin explicitly composes it.
-
-Do not add failure cases based on unreviewed Plugin activation/availability state.
+Do not reject based on Repo registration/admission state; that requires external composition state.
 
 ## Tests
 
-Meaningful tests should cover:
+Meaningful tests cover:
 
-- required `publicKey`, `contributors`, and `pluginHash` fields;
-- optional `type` behavior;
-- base58btc fixture(s) using the exact configured alphabet;
-- valid 32-byte Ed25519 public-key round-trip;
-- malformed Base58 and wrong decoded key length rejection;
-- Entity secret-key material never appearing in serialized Entity data;
-- PluginHash remaining a digest rather than Base58 identity;
-- the historical Go-model/CUE `Data` mismatch remaining visible rather than silently normalized.
+- fixed Base58btc public-key fixture and byte round-trip;
+- maximum valid 44-character Ed25519 Base58 encoding and overlong rejection;
+- Entity with only `publicKey`;
+- Entity with one valid `introducedBy`;
+- malformed/wrong-length public-key references;
+- rejection of removed `contributors`, `pluginHash`, and `type` fields;
+- rejection of secret-key/historical generic Data fields;
+- rejection of accessor and symbol-keyed shapes.
 
-Tests for Repository/Member business rules belong to their owning Plugins. Plugin availability relative to Block state belongs to the later `core.block` / runtime-composition contract, not `core.entity` or `core.record`.
+Repo registration, onboarding, initial exceptions, membership, endorsement, and authorization tests belong to the Repo/domain package.

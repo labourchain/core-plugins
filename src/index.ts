@@ -20,6 +20,7 @@ export {
   decodeBase58btc,
   encodeBase58btc,
   validateEntity,
+  validateEntityPublicKey,
   type Entity,
   type EntityPublicKey,
 } from './entity.js'
