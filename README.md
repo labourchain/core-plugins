@@ -90,11 +90,32 @@ RecordId 承诺完整 RawRecord，包括完整 `data`。普通 Record signature 
 
 `core.record` 不 resolve 或执行 Plugin，也不维护 activation / same-block state。runtime 根据 `pluginHash` 加载 exact Plugin，并由 Plugin 执行协议规则。
 
+## Entity
+
+Entity 是链级 public-key identity data，不是 Member、Repository、Organization 的抽象父类，也不在 Core 中维护注册状态。
+
+```text
+Entity {
+  publicKey
+  introducedBy?
+}
+```
+
+`publicKey` 是稳定的 `EntityPublicKey`；`introducedBy` 是可选的引荐声明。更高层 Worker / Repository / Organization 等数据只引用 Entity identity，并定义自己的领域字段。
+
+首次注册、初始例外、重复注册、准入与上链流程由 Repo 包/composition layer 负责；`core.record` 和 `core.block` 只验证 EntityPublicKey 表示与对应密码学签名。
+
+`core.entity` 同时拥有 Core 共用的 base58btc Ed25519 public-key representation validation，供 `Record.createdBy` 和 `BlockHeader.packer` 等字段复用。
+
 ## 当前审查状态
 
-`core.plugin` 已实现 Plugin identity、external/embedded artifact verification。
+`core.plugin` 已实现 Plugin identity、strict chain-data validation、external/embedded artifact verification。
 
-`core.record` 已实现 JCS RecordId、Record envelope validation 与 author signature verification。`core.entity` 已实现 public-key identity、base58btc codec 与 Entity validation。`core.block` 与 Genesis 的 Block/Header 以及历史 bootstrap Record 例外仍按旧 Service 做 source-first review；此前引入的 Plugin activation/S0/Repository issuer 状态机已经撤销。
+`core.record` 已实现 JCS RecordId、Record envelope validation 与 author signature verification，并复用 `core.entity` 的 EntityPublicKey 表示。
+
+`core.entity` 已收敛为 chain-level identity data 与共享 public-key primitive；注册/准入流程在 Repo 包完成。
+
+`core.block` 的 ordinary Block/BlockHeader contract 已完成 review，issue #9 可以进入实现；同一 Block 中 duplicate RecordId 被禁止，以消除历史 odd-leaf Merkle duplication 带来的确定性 root 歧义。Genesis 的 bootstrap Record/Header 例外仍由独立 review 处理。此前引入的 Plugin activation/S0/Repository issuer 状态机保持移除。
 
 ## 文档
 
@@ -102,7 +123,7 @@ RecordId 承诺完整 RawRecord，包括完整 `data`。普通 Record signature 
 - [`docs/architecture.md`](docs/architecture.md) — 当前 Core 总体架构；
 - [`docs/plugin.md`](docs/plugin.md) — Plugin、artifact、Asset boundary 与 runtime verification；
 - [`docs/record.md`](docs/record.md) — Record、JCS identity 与 author confirmation；
-- [`docs/block.md`](docs/block.md) — Block source-review boundary；
+- [`docs/block.md`](docs/block.md) — ordinary Block confirmation contract；
 - [`docs/genesis.md`](docs/genesis.md) — Genesis = Block 与 Core bootstrap artifact；
 - [`docs/ordering.md`](docs/ordering.md) — confirmation/business/runtime order 分离；
 - [`spec/`](spec/README.md) — 实现投影。

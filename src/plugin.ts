@@ -45,22 +45,65 @@ export class PluginArtifactError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
 }
 
 function hasOwn(value: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key)
 }
 
+function assertPlainDataObject(
+  value: unknown,
+  label: string,
+): asserts value is Record<string, unknown> {
+  if (!isPlainObject(value)) {
+    throw new PluginArtifactError(`${label} must be a plain object`)
+  }
+
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string') {
+      throw new PluginArtifactError(`${label} contains symbol-keyed data`)
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (descriptor === undefined || descriptor.enumerable !== true || !hasOwn(descriptor, 'value')) {
+      throw new PluginArtifactError(`${label}.${key} must be an enumerable data property`)
+    }
+  }
+}
+
 function assertExactKeys(
-  value: Record<string, unknown>,
+  value: unknown,
   expected: readonly string[],
   label: string,
-): void {
-  const actual = Object.keys(value)
-  if (actual.length !== expected.length || actual.some((key) => !expected.includes(key))) {
+): asserts value is Record<string, unknown> {
+  assertPlainDataObject(value, label)
+  const actual = Reflect.ownKeys(value)
+  if (
+    actual.length !== expected.length ||
+    actual.some((key) => typeof key !== 'string' || !expected.includes(key))
+  ) {
     throw new PluginArtifactError(`${label} contains unknown or missing fields`)
+  }
+}
+
+function assertDenseArray(value: unknown[], label: string): void {
+  if (Object.getPrototypeOf(value) !== Array.prototype) {
+    throw new PluginArtifactError(`${label} must be an ordinary array`)
+  }
+
+  const ownKeys = Reflect.ownKeys(value)
+  if (ownKeys.length !== value.length + 1) {
+    throw new PluginArtifactError(`${label} must be a dense array without extra properties`)
+  }
+
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+    if (descriptor === undefined || descriptor.enumerable !== true || !hasOwn(descriptor, 'value')) {
+      throw new PluginArtifactError(`${label}[${index}] must be an enumerable data property`)
+    }
   }
 }
 
@@ -148,9 +191,6 @@ function decodeCanonicalBase64(value: unknown, label: string): Uint8Array {
 }
 
 function parseRuntime(value: unknown): PluginRuntime {
-  if (!isRecord(value)) {
-    throw new PluginArtifactError('runtime must be an object')
-  }
   assertExactKeys(value, ['kind', 'abi', 'entry'], 'runtime')
 
   if (value.kind !== 'js-esm') {
@@ -169,13 +209,11 @@ function parseRuntime(value: unknown): PluginRuntime {
 }
 
 function parseDependency(value: unknown, index: number): PluginDependency {
-  if (!isRecord(value)) {
-    throw new PluginArtifactError(`dependencies[${index}] must be an object`)
-  }
-  assertExactKeys(value, ['name', 'version', 'pluginHash'], `dependencies[${index}]`)
-  assertPluginName(value.name, `dependencies[${index}].name`)
-  assertExactVersion(value.version, `dependencies[${index}].version`)
-  assertDigest(value.pluginHash, `dependencies[${index}].pluginHash`)
+  const label = `dependencies[${index}]`
+  assertExactKeys(value, ['name', 'version', 'pluginHash'], label)
+  assertPluginName(value.name, `${label}.name`)
+  assertExactVersion(value.version, `${label}.version`)
+  assertDigest(value.pluginHash, `${label}.pluginHash`)
 
   return {
     name: value.name,
@@ -185,19 +223,17 @@ function parseDependency(value: unknown, index: number): PluginDependency {
 }
 
 function parseFile(value: unknown, index: number): PluginFile {
-  if (!isRecord(value)) {
-    throw new PluginArtifactError(`files[${index}] must be an object`)
-  }
-  assertExactKeys(value, ['path', 'size', 'hash'], `files[${index}]`)
-  assertCanonicalArtifactPath(value.path, `files[${index}].path`)
+  const label = `files[${index}]`
+  assertExactKeys(value, ['path', 'size', 'hash'], label)
+  assertCanonicalArtifactPath(value.path, `${label}.path`)
   if (
     !Number.isSafeInteger(value.size) ||
     Object.is(value.size, -0) ||
     (value.size as number) < 0
   ) {
-    throw new PluginArtifactError(`files[${index}].size must be a non-negative safe integer`)
+    throw new PluginArtifactError(`${label}.size must be a non-negative safe integer`)
   }
-  assertDigest(value.hash, `files[${index}].hash`)
+  assertDigest(value.hash, `${label}.hash`)
 
   return {
     path: value.path,
@@ -207,12 +243,10 @@ function parseFile(value: unknown, index: number): PluginFile {
 }
 
 function parseEmbeddedArtifact(value: unknown, files: readonly PluginFile[]): PluginArtifact {
-  if (!isRecord(value)) {
-    throw new PluginArtifactError('plugin.artifact must be an object')
-  }
+  assertPlainDataObject(value, 'plugin.artifact')
 
   const declared = new Map(files.map((file) => [file.path, file] as const))
-  const actualPaths = Object.keys(value)
+  const actualPaths = Reflect.ownKeys(value) as string[]
   if (actualPaths.length !== declared.size) {
     throw new PluginArtifactError('plugin.artifact file set does not exactly match plugin.files')
   }
@@ -244,8 +278,8 @@ function parseEmbeddedArtifact(value: unknown, files: readonly PluginFile[]): Pl
 }
 
 export function validatePlugin(value: unknown): Plugin {
-  if (!isRecord(value)) {
-    throw new PluginArtifactError('plugin must be an object')
+  if (!isPlainObject(value)) {
+    throw new PluginArtifactError('plugin must be a plain object')
   }
 
   const hasArtifact = hasOwn(value, 'artifact')
@@ -262,6 +296,8 @@ export function validatePlugin(value: unknown): Plugin {
   if (!Array.isArray(value.files)) {
     throw new PluginArtifactError('plugin.files must be an array')
   }
+  assertDenseArray(value.dependencies, 'plugin.dependencies')
+  assertDenseArray(value.files, 'plugin.files')
 
   const dependencies = value.dependencies.map(parseDependency)
   const files = value.files.map(parseFile)
@@ -331,7 +367,7 @@ function serializeJcs(value: unknown): string {
     return `[${value.map((item) => serializeJcs(item)).join(',')}]`
   }
 
-  if (isRecord(value)) {
+  if (isPlainObject(value)) {
     const keys = Object.keys(value).sort(compareUtf16)
     const members = keys.map((key) => {
       assertWellFormedUnicode(key, 'JCS property name')
@@ -348,8 +384,12 @@ function pluginIdentity(value: Plugin): Omit<Plugin, 'artifact'> {
   return identity
 }
 
+function canonicalValidatedPlugin(plugin: Plugin): Uint8Array {
+  return Buffer.from(serializeJcs(pluginIdentity(plugin)), 'utf8')
+}
+
 export function canonicalPlugin(plugin: unknown): Uint8Array {
-  return Buffer.from(serializeJcs(pluginIdentity(validatePlugin(plugin))), 'utf8')
+  return canonicalValidatedPlugin(validatePlugin(plugin))
 }
 
 function doubleSha256(bytes: Uint8Array): Uint8Array {
@@ -358,11 +398,18 @@ function doubleSha256(bytes: Uint8Array): Uint8Array {
 }
 
 export function fileHash(bytes: Uint8Array): FileHash {
+  if (!(bytes instanceof Uint8Array)) {
+    throw new PluginArtifactError('fileHash input must be bytes')
+  }
   return Buffer.from(doubleSha256(bytes)).toString('hex')
 }
 
+function hashValidatedPlugin(plugin: Plugin): PluginHash {
+  return Buffer.from(doubleSha256(canonicalValidatedPlugin(plugin))).toString('hex')
+}
+
 export function pluginHash(plugin: unknown): PluginHash {
-  return Buffer.from(doubleSha256(canonicalPlugin(plugin))).toString('hex')
+  return hashValidatedPlugin(validatePlugin(plugin))
 }
 
 function normalizeArtifactFiles(
@@ -372,9 +419,7 @@ function normalizeArtifactFiles(
     return new Map(files)
   }
 
-  if (!isRecord(files)) {
-    throw new PluginArtifactError('artifact files must be a map or object')
-  }
+  assertPlainDataObject(files, 'artifact files')
 
   const result = new Map<string, Uint8Array>()
   for (const [path, bytes] of Object.entries(files)) {
@@ -386,6 +431,18 @@ function normalizeArtifactFiles(
   return result
 }
 
+function compareExpectedPluginHash(plugin: Plugin, expectedPluginHash?: PluginHash): PluginHash {
+  if (expectedPluginHash !== undefined) {
+    assertDigest(expectedPluginHash, 'expectedPluginHash')
+  }
+
+  const calculated = hashValidatedPlugin(plugin)
+  if (expectedPluginHash !== undefined && calculated !== expectedPluginHash) {
+    throw new PluginArtifactError('PluginHash mismatch')
+  }
+  return calculated
+}
+
 function verifyArtifactFiles(
   plugin: Plugin,
   files: ReadonlyMap<string, Uint8Array> | Readonly<Record<string, Uint8Array>>,
@@ -393,17 +450,13 @@ function verifyArtifactFiles(
 ): PluginHash {
   const normalized = normalizeArtifactFiles(files)
 
-  if (expectedPluginHash !== undefined) {
-    assertDigest(expectedPluginHash, 'expectedPluginHash')
-  }
-
   const declaredPaths = new Set(plugin.files.map((file) => file.path))
   if (normalized.size !== declaredPaths.size) {
     throw new PluginArtifactError('artifact file set does not exactly match plugin.files')
   }
 
   for (const [path, bytes] of normalized) {
-    assertCanonicalArtifactPath(path, `artifact file path ${JSON.stringify(path)}`)
+    assertCanonicalArtifactPath(path, 'artifact file path')
     if (!declaredPaths.has(path)) {
       throw new PluginArtifactError(`artifact contains undeclared file: ${path}`)
     }
@@ -425,11 +478,7 @@ function verifyArtifactFiles(
     }
   }
 
-  const calculated = pluginHash(plugin)
-  if (expectedPluginHash !== undefined && calculated !== expectedPluginHash) {
-    throw new PluginArtifactError('PluginHash mismatch')
-  }
-  return calculated
+  return compareExpectedPluginHash(plugin, expectedPluginHash)
 }
 
 export function verifyArtifact(
@@ -448,18 +497,5 @@ export function verifyEmbeddedArtifact(
   if (value.artifact === undefined) {
     throw new PluginArtifactError('plugin.artifact is required')
   }
-
-  const files = new Map<string, Uint8Array>()
-  for (const descriptor of value.files) {
-    const encoded = value.artifact[descriptor.path]
-    if (encoded === undefined) {
-      throw new PluginArtifactError(`plugin.artifact is missing declared file: ${descriptor.path}`)
-    }
-    files.set(
-      descriptor.path,
-      decodeCanonicalBase64(encoded, `plugin.artifact[${JSON.stringify(descriptor.path)}]`),
-    )
-  }
-
-  return verifyArtifactFiles(value, files, expectedPluginHash)
+  return compareExpectedPluginHash(value, expectedPluginHash)
 }

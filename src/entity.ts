@@ -1,19 +1,16 @@
-import type { PluginHash } from './plugin.js'
-
 export type EntityPublicKey = string
 
 export interface Entity {
   publicKey: EntityPublicKey
-  contributors: EntityPublicKey[]
-  pluginHash: PluginHash
-  type?: string
+  introducedBy?: EntityPublicKey
 }
 
-const DIGEST_RE = /^[0-9a-f]{64}$/u
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 const BASE58_INDEX = new Map([...BASE58_ALPHABET].map((character, index) => [character, index]))
-const REQUIRED_KEYS = ['publicKey', 'contributors', 'pluginHash'] as const
-const OPTIONAL_KEYS = ['type'] as const
+const REQUIRED_KEYS = ['publicKey'] as const
+const OPTIONAL_KEYS = ['introducedBy'] as const
+const ED25519_PUBLIC_KEY_BYTES = 32
+const MAX_ED25519_BASE58_LENGTH = 44
 
 export class EntityError extends Error {
   constructor(message: string) {
@@ -26,23 +23,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const prototype = Object.getPrototypeOf(value)
   return prototype === Object.prototype || prototype === null
-}
-
-function assertWellFormedUnicode(value: string, label: string): void {
-  for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index)
-    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-      const next = value.charCodeAt(index + 1)
-      if (!Number.isInteger(next) || next < 0xdc00 || next > 0xdfff) {
-        throw new EntityError(`${label} contains invalid Unicode data`)
-      }
-      index += 1
-      continue
-    }
-    if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      throw new EntityError(`${label} contains invalid Unicode data`)
-    }
-  }
 }
 
 export function encodeBase58btc(bytes: Uint8Array): string {
@@ -95,21 +75,27 @@ export function decodeBase58btc(value: string): Uint8Array {
   return Uint8Array.from(Buffer.concat([Buffer.alloc(leadingZeroes), body]))
 }
 
-function assertEntityPublicKey(value: unknown, label: string): asserts value is EntityPublicKey {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new EntityError(`${label} must be non-empty base58btc`)
+export function validateEntityPublicKey(value: unknown): EntityPublicKey {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > MAX_ED25519_BASE58_LENGTH
+  ) {
+    throw new EntityError('Entity public key must be base58btc encoding of a 32-byte Ed25519 key')
   }
 
   let bytes: Uint8Array
   try {
     bytes = decodeBase58btc(value)
   } catch {
-    throw new EntityError(`${label} must use the base58btc alphabet`)
+    throw new EntityError('Entity public key must be base58btc encoding of a 32-byte Ed25519 key')
   }
 
-  if (bytes.byteLength !== 32) {
-    throw new EntityError(`${label} must decode to a 32-byte Ed25519 public key`)
+  if (bytes.byteLength !== ED25519_PUBLIC_KEY_BYTES) {
+    throw new EntityError('Entity public key must decode to a 32-byte Ed25519 public key')
   }
+
+  return value
 }
 
 function assertExactEntityShape(value: unknown): asserts value is Record<string, unknown> {
@@ -134,55 +120,14 @@ function assertExactEntityShape(value: unknown): asserts value is Record<string,
   }
 }
 
-function assertDenseArray(value: unknown[], label: string): void {
-  const expected = new Set<string>(['length'])
-  for (let index = 0; index < value.length; index += 1) expected.add(String(index))
-
-  const ownKeys = Reflect.ownKeys(value)
-  if (
-    ownKeys.length !== expected.size ||
-    ownKeys.some((key) => typeof key !== 'string' || !expected.has(key))
-  ) {
-    throw new EntityError(`${label} must be a dense array without extra properties`)
-  }
-
-  for (let index = 0; index < value.length; index += 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
-    if (descriptor === undefined || descriptor.enumerable !== true || !('value' in descriptor)) {
-      throw new EntityError(`${label}[${index}] must be an enumerable data property`)
-    }
-  }
-}
-
 export function validateEntity(value: unknown): Entity {
   assertExactEntityShape(value)
-  assertEntityPublicKey(value.publicKey, 'entity.publicKey')
+  const publicKey = validateEntityPublicKey(value.publicKey)
 
-  if (!Array.isArray(value.contributors)) {
-    throw new EntityError('entity.contributors must be an array')
+  const hasIntroducedBy = Object.prototype.hasOwnProperty.call(value, 'introducedBy')
+  const entity: Entity = { publicKey }
+  if (hasIntroducedBy) {
+    entity.introducedBy = validateEntityPublicKey(value.introducedBy)
   }
-  assertDenseArray(value.contributors, 'entity.contributors')
-  for (let index = 0; index < value.contributors.length; index += 1) {
-    assertEntityPublicKey(value.contributors[index], `entity.contributors[${index}]`)
-  }
-
-  if (typeof value.pluginHash !== 'string' || !DIGEST_RE.test(value.pluginHash)) {
-    throw new EntityError('entity.pluginHash must be 64-character lowercase hexadecimal')
-  }
-
-  const hasType = Object.prototype.hasOwnProperty.call(value, 'type')
-  if (hasType) {
-    if (typeof value.type !== 'string') {
-      throw new EntityError('entity.type must be a string')
-    }
-    assertWellFormedUnicode(value.type, 'entity.type')
-  }
-
-  const entity: Entity = {
-    publicKey: value.publicKey,
-    contributors: [...value.contributors],
-    pluginHash: value.pluginHash,
-  }
-  if (hasType) entity.type = value.type as string
   return entity
 }

@@ -35,9 +35,7 @@ interface Block {
 }
 ```
 
-Historical `BlockHeader.hash` is not a full Block identity. The Genesis source writes the ordered RecordId Merkle root into it. Current design therefore names that field by its actual meaning.
-
-Current ordinary Header model:
+Historical `BlockHeader.hash` is not a full Block identity. Genesis writes the ordered RecordId Merkle root into it. Current design therefore names that field by its actual meaning.
 
 ```ts
 interface RawBlockHeader {
@@ -52,9 +50,9 @@ interface BlockHeader extends RawBlockHeader {
 }
 ```
 
-`"0"` is reserved as the source-derived first-link sentinel. Whether current Genesis uses that sentinel is finalized by the Genesis review; ordinary non-first Blocks link to a 64-character lowercase-hex `BlockId`.
+`"0"` is reserved as the source-derived first-link sentinel. Whether current Genesis uses it is finalized by the Genesis review. Ordinary non-first Blocks link to a 64-character lowercase-hex `BlockId`.
 
-`BlockHeader` is a public type owned by `core.block`; there is no independent `core.block-header` Plugin.
+`BlockHeader` is owned by `core.block`; there is no separate `core.block-header` Plugin.
 
 ## Record baseline
 
@@ -66,23 +64,21 @@ RecordId = DoubleSHA256(JCS(RawRecord))
 ordinary signature = domain-separated Ed25519 over RecordId
 ```
 
-`core.block` must not redefine RecordId, Record author confirmation, Plugin resolution, or protocol-specific `Record.data` validity.
+`core.block` must not redefine RecordId, Record author confirmation, Plugin resolution, Entity registration policy, or protocol-specific `Record.data` validity.
 
 ## Records root
 
-The historical ordered RecordId Merkle algorithm is retained:
+Retain the historical ordered RecordId Merkle algorithm:
 
 ```text
 0 ids -> ""
 1 id  -> id
-pair  -> DoubleSHA256(left + right)
-odd   -> DoubleSHA256(id + id)
+pair  -> DoubleSHA256(UTF8(left + right))
+odd   -> DoubleSHA256(UTF8(id + id))
 repeat until one value remains
 ```
 
-`left/right` are the 64-character lowercase-hex RecordId text values. Internal Merkle nodes are also lowercase-hex DoubleSHA256 text.
-
-The algorithm intentionally hashes the UTF-8 text concatenation of the two IDs; it does not hex-decode them before hashing.
+`left/right` are 64-character lowercase-hex RecordId text. Internal nodes are also lowercase-hex DoubleSHA256 text. RecordId text is not hex-decoded before pair hashing.
 
 Therefore:
 
@@ -91,17 +87,35 @@ recordsRoot([]) = ""
 recordsRoot([id]) = id
 ```
 
-Empty Blocks remain representable because the historical source explicitly defines the empty root. Core adds no minimum Record count without a concrete requirement.
+Array order participates in `recordsRoot`. Empty Blocks remain representable.
 
-Record array order participates in `recordsRoot`. Core does not require RecordIds to be unique and does not reinterpret the ordered array as a generic business topology.
+### Duplicate RecordIds are invalid
 
-`recordsRoot` commits Record fact identities, not Record signature bytes. Each Record author signature remains an independently verified proof over its RecordId.
+The historical odd-leaf duplication rule has a deterministic ambiguity:
+
+```text
+recordsRoot([A, B, C])
+== recordsRoot([A, B, C, C])
+```
+
+because both first levels contain:
+
+```text
+DoubleSHA256(A + B)
+DoubleSHA256(C + C)
+```
+
+This is not a cryptographic hash collision; it is a property of the retained tree construction. If duplicate RecordIds were allowed, two different `Block.records[]` values could share the same `recordsRoot`, and therefore the same BlockId/Header signature when the remaining Header fields match.
+
+To preserve the historical Merkle algorithm without introducing a new leaf format or `recordCount` Header field, `core.block@0.1.0` requires RecordIds in one Block to be unique.
+
+`recordsRoot(recordIds)` must reject duplicate RecordIds. `verifyBlock(block)` must therefore reject a Block containing the same RecordId more than once.
+
+This is a confirmation-container integrity rule, not a business-DAG rule.
+
+`recordsRoot` commits Record fact identities, not Record signature bytes. Each Record author signature is verified independently.
 
 ## Block identity
-
-A Block needs an identity distinct from its Records root because Header confirmation metadata is part of the chain history.
-
-`BlockId` is derived from the unsigned Header:
 
 ```text
 BlockId =
@@ -115,77 +129,71 @@ DoubleSHA256(
 )
 ```
 
-`BlockId` is a 64-character lowercase-hex digest and is not serialized as an additional Header field.
+`BlockId` is a 64-character lowercase-hex digest and is not serialized as another Header field. Header signature is excluded from identity.
 
-The Header signature is excluded from BlockId, matching the separation already used by Record identity: identity commits the unsigned header; the signature proves the identified actor confirmed it.
+`blockId()` accepts either an exact `RawBlockHeader` or exact full `BlockHeader`; for the latter only the four unsigned fields enter canonical identity.
 
-`blockId()` accepts either an exact `RawBlockHeader` or an exact full `BlockHeader`. For a full Header, only the four unsigned fields above enter the canonical identity; `signature` is deliberately excluded rather than treated as an unknown field.
-
-For ordinary chain linkage:
+Ordinary chain linkage is:
 
 ```text
 current.header.previousBlock = blockId(previous.header)
 ```
 
-Checking that equality requires chain context. A standalone `verifyBlock(block)` validates the Header representation and confirmation but does not decide which previous Block a runtime should attach it to.
+Checking that equality requires chain context. Standalone `verifyBlock(block)` does not decide which previous Block a runtime should attach it to.
 
 ## Header signature
 
-Packer identity uses the `core.entity` representation:
+Packer identity uses the shared `core.entity` representation:
 
 ```text
 raw 32-byte Ed25519 public key -> base58btc text
 ```
 
+Core validates key representation and signature only; Repo/network policy decides whether the Entity is registered/authorized to pack.
+
 Block signature wire representation is 128-character lowercase hex.
 
-Domain:
-
 ```text
-labourchain:block:v1:
+BLOCK_SIGNING_DOMAIN = "labourchain:block:v1:"
+blockSigningPayload(id)
+= UTF8(BLOCK_SIGNING_DOMAIN) || hexDecode(BlockId)
 ```
 
-Signing payload:
-
-```text
-UTF8("labourchain:block:v1:") || hexDecode(BlockId)
-```
-
-The packer signs this payload with the Ed25519 private key corresponding to `header.packer`.
+The packer signs that payload with the matching Ed25519 private key.
 
 Historical Genesis/runtime JSON-signing differences and historical packer hex/Base64-like encodings are not carried forward.
 
 ## Header representation
 
-`RawBlockHeader` and `BlockHeader` use exact top-level fields. Unknown, missing, accessor, symbol-keyed or non-enumerable fields are rejected at the trust boundary, consistent with the existing Core validators.
-
-Representation rules:
+`RawBlockHeader` and `BlockHeader` use exact top-level fields. Unknown, missing, accessor, symbol-keyed or non-enumerable fields are rejected.
 
 ```text
 recordsRoot   -> "" or 64-character lowercase hex
 previousBlock -> "0" or 64-character lowercase hex
 createdAt     -> well-formed Unicode string
-packer        -> base58btc value decoding to exactly 32 bytes
+packer        -> EntityPublicKey
 signature     -> 128-character lowercase hex
 ```
 
-`createdAt` remains fact/header data. Core does not add wall-clock, monotonicity or RFC3339 consensus validation beyond valid string representation.
+`createdAt` remains signed header data. Core adds no wall-clock, monotonicity or RFC3339 consensus rule.
 
 ## Confirmation order and domain relations
 
 Block order is confirmation/storage order.
 
-Records in the same Block may have real domain dependencies, including labour Records that depend on outputs represented by other Records in the same Block. Core does not infer or validate those relations from Record array position.
+Records in one Block may have real domain dependencies, including labour Records depending on another Record's output. Core does not infer or validate those relations from array position.
 
-Labour/Asset/Project tracing, input/output consistency and other business causality belong to their domain Plugins.
+Labour/Asset/Project tracing, input/output consistency and business causality belong to their domain Plugins.
+
+The duplicate-RecordId prohibition above only ensures that `recordsRoot` uniquely commits the Block's ordered RecordId sequence under the retained Merkle rule; it does not impose generic DAG or topological-order semantics.
 
 ## Plugin availability is not Block validity
 
 A Record declares exact protocol machine identity through `pluginHash`. Runtime/composition resolves and executes that Plugin.
 
-Normal composition should make a Plugin available before Records governed by it are produced. Publishing a Plugin for the first time in the same Block as Records that depend on it is not recommended.
+Normal composition should make a Plugin available before Records governed by it are produced. First publishing a Plugin in the same Block as Records that depend on it is not recommended, but it is not a generic Block-validity rule.
 
-This is not a generic Block-validity rule. `core.block` does not maintain or validate:
+`core.block` does not maintain or validate:
 
 ```text
 PluginRelease / activePluginState / nextPluginState
@@ -196,16 +204,15 @@ earlier-in-same-Block Plugin activation
 Plugin dependency ordering by Block position
 ```
 
-A Block is not rejected merely because it contains both a Plugin Record and another Record using that Plugin's `pluginHash`.
-
 ## `verifyBlock` boundary
 
-`verifyBlock` validates the deterministic confirmation container only:
+`verifyBlock` validates only the deterministic confirmation container:
 
 ```text
 exact Block / BlockHeader representation
 -> each ordinary Record envelope and derived RecordId
 -> each ordinary Record author signature
+-> RecordId uniqueness inside the Block
 -> recordsRoot(record.id in array order)
 -> equality with header.recordsRoot
 -> derived BlockId
@@ -218,6 +225,7 @@ Malformed representation or deterministic identity/commitment mismatch is an err
 
 ```text
 Plugin execution or protocol-specific Record.data rules
+Entity registration/admission state
 Labour/Asset/Project business topology
 Plugin publication/activation order
 PoA packer authorization
@@ -227,11 +235,7 @@ network synchronization
 persistence
 ```
 
-Those require runtime, network or domain context beyond a standalone Block.
-
 ## Minimal public capability
-
-The implementation should expose only the confirmation primitives needed by callers:
 
 ```text
 recordsRoot(recordIds)
@@ -243,9 +247,9 @@ verifyBlock(block)
 
 plus Block types and `BlockError`.
 
-`blockSigningPayload` is deliberately named rather than exporting a second generic `signingPayload`, because the package root already exports `core.record`'s `signingPayload`.
+`blockSigningPayload` is deliberately named because the package root already exports `core.record`'s `signingPayload`.
 
-No signing helper, key generation, Plugin resolver, chain store or consensus/policy object belongs in `core.block`.
+No signing helper, key generation, Plugin resolver, chain store, Entity registry or consensus-policy object belongs in `core.block`.
 
 ## Genesis boundary
 
@@ -253,14 +257,15 @@ Genesis remains a Block containing Records, including initial `Record.data = Plu
 
 Standalone `GenesisManifest`, `GenesisId`, and S0 Plugin artifact-set designs remain removed.
 
-Historical bootstrap RecordId/`createdBy`/signature exceptions, Root Member/Repository retention and exact use of the reserved `"0"` first-link sentinel are finalized by the dedicated Genesis review. Ordinary `core.block` must not grow Plugin-state or business-state branches for Genesis.
+Historical bootstrap RecordId/`createdBy`/signature exceptions, Root Member/Repository retention and exact use of the reserved `"0"` first-link sentinel are finalized by the dedicated Genesis review. Ordinary `core.block` must not grow Plugin-state, Repo-registration-state or business-state branches for Genesis.
 
 ## Failure cases
 
 Reject or fail verification for at least:
 
 - malformed Block or Header shape;
-- malformed Records root / previous-link / packer / signature representation;
+- malformed RecordId/root/previous-link/packer/signature representation;
+- duplicate RecordIds inside one Block;
 - malformed ordinary Records;
 - RecordId mismatch;
 - invalid ordinary Record author signature;
@@ -269,12 +274,12 @@ Reject or fail verification for at least:
 
 Do not reject solely for:
 
-- repeated RecordIds;
 - empty `records[]`;
 - same-Block business dependencies;
 - same-Block Plugin publication/use;
 - Plugin activation assumptions;
-- domain DAG topology.
+- domain DAG topology;
+- Repo registration/admission state unavailable to standalone Core validation.
 
 ## Tests
 
@@ -283,6 +288,7 @@ Meaningful tests should cover:
 - fixed historical-style ordered Merkle fixtures using current RecordId representation;
 - empty and single-Record roots;
 - Record order changing the root;
+- duplicate RecordId rejection, including the `[A,B,C]` vs `[A,B,C,C]` ambiguity regression;
 - fixed JCS-derived BlockId fixture;
 - raw and full Header producing the same BlockId;
 - all unsigned Header fields affecting BlockId;
@@ -291,6 +297,7 @@ Meaningful tests should cover:
 - Records-root mismatch;
 - malformed Block/Header representation;
 - ordinary Record signature verification through `verifyBlock`;
-- absence of duplicate-Record, Plugin-activation and business-DAG rejection rules.
+- acceptance of empty `records[]`;
+- absence of Plugin-activation and business-DAG rejection rules.
 
 Genesis bootstrap exceptions are tested only after the Genesis review fixes them.

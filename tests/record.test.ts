@@ -1,5 +1,6 @@
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
+import { encodeBase58btc } from '../src/entity.js'
 import {
   RECORD_SIGNING_DOMAIN,
   canonicalRecord,
@@ -17,21 +18,6 @@ const FIXED_PLUGIN_HASH = '11'.repeat(32)
 const FIXED_CANONICAL =
   '{"createdAt":"2026-09-05T03:00:00Z","createdBy":"1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE","data":{"a":"x","b":2},"plugin":"test.fact@0.1.0","pluginHash":"1111111111111111111111111111111111111111111111111111111111111111"}'
 const FIXED_RECORD_ID = 'eb1e6c0bbda429d87b18049e828606b94293b2bf7410c07a4037644df6d9da86'
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-
-function base58Encode(bytes: Uint8Array): string {
-  let number = BigInt(`0x${Buffer.from(bytes).toString('hex') || '0'}`)
-  let encoded = ''
-  while (number > 0n) {
-    const remainder = Number(number % 58n)
-    number /= 58n
-    encoded = BASE58_ALPHABET[remainder] + encoded
-  }
-
-  let leadingZeroes = 0
-  while (leadingZeroes < bytes.length && bytes[leadingZeroes] === 0) leadingZeroes += 1
-  return '1'.repeat(leadingZeroes) + encoded
-}
 
 function fixedRawRecord(): RawRecord {
   return {
@@ -60,7 +46,7 @@ function makeSignedRecord(): ChainRecord {
   const raw: RawRecord = {
     plugin: 'test.signed@0.1.0',
     pluginHash: '22'.repeat(32),
-    createdBy: base58Encode(rawPublicKey),
+    createdBy: encodeBase58btc(rawPublicKey),
     createdAt: '2026-09-05T04:00:00Z',
     data: { accepted: true, count: 3 },
   }
@@ -92,7 +78,7 @@ describe('core.record identity', () => {
 
   it('commits to every RawRecord field', () => {
     const original = fixedRawRecord()
-    const alternateKey = base58Encode(Uint8Array.from({ length: 32 }, (_, index) => index + 1))
+    const alternateKey = encodeBase58btc(Uint8Array.from({ length: 32 }, (_, index) => index + 1))
 
     const mutations: RawRecord[] = [
       { ...original, plugin: 'test.other@0.1.0' },
@@ -137,6 +123,7 @@ describe('core.record identity', () => {
       undefined,
       Number.NaN,
       Number.POSITIVE_INFINITY,
+      -0,
       1n,
       () => 1,
       Symbol('x'),
@@ -151,6 +138,17 @@ describe('core.record identity', () => {
     for (const data of invalidValues) {
       expect(() => validateRawRecord({ ...fixedRawRecord(), data })).toThrow()
     }
+
+    expect(() => validateRawRecord({ ...fixedRawRecord(), data: { nested: [-0] } })).toThrow(
+      /invalid JCS number/,
+    )
+
+    class DataArray extends Array<number> {}
+    Object.defineProperty(DataArray.prototype, 'map', { value: () => [] })
+    const subclassed = new DataArray(1, 2, 3)
+    expect(() => validateRawRecord({ ...fixedRawRecord(), data: subclassed })).toThrow(
+      /ordinary JSON array/,
+    )
 
     const accessor: Record<string, unknown> = {}
     Object.defineProperty(accessor, 'value', {
@@ -174,8 +172,9 @@ describe('core.record identity', () => {
     )
     expect(() => validateRawRecord({ ...fixedRawRecord(), createdBy: '0OIl' })).toThrow(/base58btc/)
 
-    const shortKey = base58Encode(new Uint8Array(31))
+    const shortKey = encodeBase58btc(new Uint8Array(31))
     expect(() => validateRawRecord({ ...fixedRawRecord(), createdBy: shortKey })).toThrow(/32-byte/)
+    expect(() => validateRawRecord({ ...fixedRawRecord(), createdBy: '1'.repeat(45) })).toThrow(/32-byte/)
   })
 })
 

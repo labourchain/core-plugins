@@ -40,16 +40,14 @@ core.block
 
 ## 当前规格状态
 
-- [`core-plugin.md`](core-plugin.md) — 已定义并实现的 Plugin data、FileHash/PluginHash、exact artifact verification、optional embedded artifact；
-- [`core-record.md`](core-record.md) — 已定义 ordinary Record primitive：JCS RecordId、协议来源、Entity 作者确认与 signature verification；
-- [`core-entity.md`](core-entity.md) — Entity public-key identity primitive；
-- [`core-block.md`](core-block.md) — pending source-aligned review，旧 Plugin-state/GenesisId 假设非规范；
+- [`core-plugin.md`](core-plugin.md) — 已定义并实现的 Plugin data、FileHash/PluginHash、strict chain-data validation、exact artifact verification、optional embedded artifact；
+- [`core-record.md`](core-record.md) — 已定义并实现 ordinary Record primitive：JCS RecordId、协议来源、EntityPublicKey 作者确认与 signature verification；
+- [`core-entity.md`](core-entity.md) — 已定义并实现 Entity identity data 与共享 EntityPublicKey primitive；注册/准入流程属于 Repo 包；
+- [`core-block.md`](core-block.md) — ordinary Block confirmation contract 已完成 review，issue #9 implementation-ready；
 - [`genesis.md`](genesis.md) — `Genesis = Block` migration baseline，MVP Core Plugin Records 需要 embedded artifact，bootstrap identity/signature 特例仍待 review；
-- [`ordering.md`](ordering.md) — 只冻结 Block confirmation、业务关系和 runtime arrival order 的分离。
+- [`ordering.md`](ordering.md) — Block confirmation、业务关系和 runtime arrival order 分离。
 
 ## Plugin artifact contract
-
-当前 `core.plugin` identity：
 
 ```text
 Plugin descriptor
@@ -75,8 +73,6 @@ MVP 初始 Core Plugins 应把完整 executable artifact 随 Genesis Plugin Reco
 
 ## Record contract
 
-普通 Record：
-
 ```text
 RawRecord
 = plugin / pluginHash / createdBy / createdAt / data
@@ -84,8 +80,6 @@ RawRecord
 Record
 = id / signature + RawRecord
 ```
-
-两种来源：
 
 ```text
 plugin / pluginHash -> protocol source
@@ -100,7 +94,34 @@ RecordId = DoubleSHA256(JCS(RawRecord))
 
 RecordId 承诺完整 RawRecord，包括完整 `data`。普通 signature 使用固定 domain-separated Ed25519 signature over RecordId。
 
-`core.record` 不 resolve/execute Plugin，也不包含 activation、Block availability 或 Genesis exception。
+`core.record` 不 resolve/execute Plugin，不包含 activation、Block availability、Entity registration state 或 Genesis exception。
+
+## Entity boundary
+
+```text
+Entity {
+  publicKey
+  introducedBy?
+}
+```
+
+`core.entity` 负责 EntityPublicKey 的 Base58btc / 32-byte Ed25519 表示验证，以及 Entity data 的 exact shape。
+
+首次/重复注册、初始例外、准入与身份上链流程属于 Repo 包/composition layer。Core 的 `Record.createdBy` / `BlockHeader.packer` 验证并不自行证明该 identity 已被 Repo 注册或授权。
+
+## Block contract
+
+ordinary Block 保留历史 ordered RecordId Merkle 算法，并从 unsigned Header 派生 BlockId。
+
+由于历史 odd-leaf duplication 存在：
+
+```text
+recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
+```
+
+`core.block@0.1.0` 禁止同一 Block 中 duplicate RecordId；`recordsRoot(recordIds)` 与 `verifyBlock(block)` 都必须拒绝重复值。
+
+该规则只保护 confirmation-container commitment，不引入业务 DAG、Plugin activation 或 Repo registration state。
 
 ## Artifact / Asset boundary
 
@@ -115,18 +136,18 @@ Build tooling 的约 500 KiB warning 是 docs 中的工程建议，不属于 con
 ## Identity / encoding boundary
 
 ```text
-Entity public key -> identity encoding defined by core.entity
+Entity public key -> base58btc 32-byte Ed25519 identity defined by core.entity
 Signature         -> signature result, not Entity identity
 RecordId          -> DoubleSHA256(JCS(RawRecord)), lowercase hex
-FileHash          -> DoubleSHA256 digest
-PluginHash        -> DoubleSHA256 digest
-RecordsRoot       -> reviewed under core.block
-Block identity    -> reviewed under core.block
+FileHash          -> DoubleSHA256(raw bytes), lowercase hex
+PluginHash        -> DoubleSHA256(canonical Plugin identity), lowercase hex
+RecordsRoot       -> ordered RecordId Merkle root, duplicate RecordIds forbidden
+BlockId           -> DoubleSHA256(JCS(unsigned BlockHeader)), lowercase hex
 ```
 
 ## Runner/server boundary
 
-runner/server 负责：
+runner/server 与 composition layer 负责：
 
 ```text
 process / Cordis Context
@@ -138,6 +159,8 @@ Asset fetch/storage
 persistence
 transport/sync
 secret-key storage / signing UX
+Entity registration/admission policy through Repo package
+PoA authorization
 sandbox/capability policy
 observability
 ```

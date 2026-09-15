@@ -1,8 +1,9 @@
 import { createHash, createPublicKey, verify as verifyEd25519 } from 'node:crypto'
+import { decodeBase58btc, validateEntityPublicKey, type EntityPublicKey } from './entity.js'
 import type { PluginHash } from './plugin.js'
 
+export type { EntityPublicKey } from './entity.js'
 export type RecordId = string
-export type EntityPublicKey = string
 
 export interface RawRecord {
   plugin: string
@@ -21,8 +22,6 @@ const DIGEST_RE = /^[0-9a-f]{64}$/u
 const SIGNATURE_RE = /^[0-9a-f]{128}$/u
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/u
 const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-const BASE58_INDEX = new Map([...BASE58_ALPHABET].map((character, index) => [character, index]))
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
 
 export const RECORD_SIGNING_DOMAIN = 'labourchain:record:v1:'
@@ -124,39 +123,13 @@ function assertSignature(value: unknown): asserts value is string {
   }
 }
 
-function decodeBase58btc(value: unknown, label: string): Uint8Array {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new RecordError(`${label} must be non-empty base58btc`)
-  }
-
-  let number = 0n
-  for (const character of value) {
-    const digit = BASE58_INDEX.get(character)
-    if (digit === undefined) {
-      throw new RecordError(`${label} must use the base58btc alphabet`)
-    }
-    number = number * 58n + BigInt(digit)
-  }
-
-  let body = Buffer.alloc(0)
-  if (number !== 0n) {
-    let hex = number.toString(16)
-    if (hex.length % 2 !== 0) hex = `0${hex}`
-    body = Buffer.from(hex, 'hex')
-  }
-
-  let leadingZeroes = 0
-  while (leadingZeroes < value.length && value[leadingZeroes] === '1') {
-    leadingZeroes += 1
-  }
-
-  return Buffer.concat([Buffer.alloc(leadingZeroes), body])
-}
-
-function assertEntityPublicKey(value: unknown): asserts value is EntityPublicKey {
-  const bytes = decodeBase58btc(value, 'record.createdBy')
-  if (bytes.byteLength !== 32) {
-    throw new RecordError('record.createdBy must decode to a 32-byte Ed25519 public key')
+function validateCreatedBy(value: unknown): EntityPublicKey {
+  try {
+    return validateEntityPublicKey(value)
+  } catch {
+    throw new RecordError(
+      'record.createdBy must be base58btc encoding of a 32-byte Ed25519 public key',
+    )
   }
 }
 
@@ -167,14 +140,12 @@ function compareUtf16(left: string, right: string): number {
 }
 
 function assertArrayShape(value: unknown[], label: string): void {
-  const ownKeys = Reflect.ownKeys(value)
-  const expected = new Set<string>(['length'])
-  for (let index = 0; index < value.length; index += 1) expected.add(String(index))
+  if (Object.getPrototypeOf(value) !== Array.prototype) {
+    throw new RecordError(`${label} must be an ordinary JSON array`)
+  }
 
-  if (
-    ownKeys.length !== expected.size ||
-    ownKeys.some((key) => typeof key !== 'string' || !expected.has(key))
-  ) {
+  const ownKeys = Reflect.ownKeys(value)
+  if (ownKeys.length !== value.length + 1) {
     throw new RecordError(`${label} must be a dense JSON array without extra properties`)
   }
 
@@ -199,8 +170,8 @@ function serializeJcs(value: unknown, label = 'record', ancestors = new Set<obje
   }
 
   if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      throw new RecordError(`${label} contains a non-finite number`)
+    if (!Number.isFinite(value) || Object.is(value, -0)) {
+      throw new RecordError(`${label} contains an invalid JCS number`)
     }
     return JSON.stringify(value)
   }
@@ -256,30 +227,42 @@ function serializeJcs(value: unknown, label = 'record', ancestors = new Set<obje
   }
 }
 
-export function validateRawRecord(value: unknown): RawRecord {
+function parseRawRecord(value: unknown): RawRecord {
   assertExactDataObject(value, RAW_RECORD_KEYS, 'raw record')
 
   assertPluginReference(value.plugin)
   assertDigest(value.pluginHash, 'record.pluginHash')
-  assertEntityPublicKey(value.createdBy)
+  const createdBy = validateCreatedBy(value.createdBy)
   if (typeof value.createdAt !== 'string') {
     throw new RecordError('record.createdAt must be a string')
   }
   assertWellFormedUnicode(value.createdAt, 'record.createdAt')
-  serializeJcs(value.data, 'record.data')
 
   return {
     plugin: value.plugin,
     pluginHash: value.pluginHash,
-    createdBy: value.createdBy,
+    createdBy,
     createdAt: value.createdAt,
     data: value.data,
   }
 }
 
+function canonicalValidatedRecord(rawRecord: RawRecord): Uint8Array {
+  return Buffer.from(serializeJcs(rawRecord), 'utf8')
+}
+
+function recordIdFromCanonical(canonical: Uint8Array): RecordId {
+  return Buffer.from(doubleSha256(canonical)).toString('hex')
+}
+
+export function validateRawRecord(value: unknown): RawRecord {
+  const raw = parseRawRecord(value)
+  serializeJcs(raw.data, 'record.data')
+  return raw
+}
+
 export function canonicalRecord(rawRecord: unknown): Uint8Array {
-  const value = validateRawRecord(rawRecord)
-  return Buffer.from(serializeJcs(value), 'utf8')
+  return canonicalValidatedRecord(parseRawRecord(rawRecord))
 }
 
 function doubleSha256(bytes: Uint8Array): Uint8Array {
@@ -288,13 +271,13 @@ function doubleSha256(bytes: Uint8Array): Uint8Array {
 }
 
 export function recordId(rawRecord: unknown): RecordId {
-  return Buffer.from(doubleSha256(canonicalRecord(rawRecord))).toString('hex')
+  return recordIdFromCanonical(canonicalRecord(rawRecord))
 }
 
 export function validateRecord(value: unknown): Record {
   assertExactDataObject(value, RECORD_KEYS, 'record')
 
-  const raw = validateRawRecord({
+  const raw = parseRawRecord({
     plugin: value.plugin,
     pluginHash: value.pluginHash,
     createdBy: value.createdBy,
@@ -305,7 +288,7 @@ export function validateRecord(value: unknown): Record {
   assertDigest(value.id, 'record.id')
   assertSignature(value.signature)
 
-  const expectedId = recordId(raw)
+  const expectedId = recordIdFromCanonical(canonicalValidatedRecord(raw))
   if (value.id !== expectedId) {
     throw new RecordError('record.id does not match the derived RecordId')
   }
@@ -324,7 +307,7 @@ export function signingPayload(id: RecordId): Uint8Array {
 
 export function verifySignature(record: unknown): boolean {
   const value = validateRecord(record)
-  const publicKeyBytes = decodeBase58btc(value.createdBy, 'record.createdBy')
+  const publicKeyBytes = decodeBase58btc(value.createdBy)
   const publicKey = createPublicKey({
     key: Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(publicKeyBytes)]),
     format: 'der',
