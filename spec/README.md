@@ -43,7 +43,7 @@ core.block
 - [`core-plugin.md`](core-plugin.md) — 已定义并实现的 Plugin data、FileHash/PluginHash、strict chain-data validation、exact artifact verification、optional embedded artifact；
 - [`core-record.md`](core-record.md) — 已定义并实现 ordinary Record primitive：JCS RecordId、协议来源、EntityPublicKey 作者确认与 signature verification；
 - [`core-entity.md`](core-entity.md) — 已定义并实现 Entity identity data 与共享 EntityPublicKey primitive；注册/准入流程属于 Repo 包；
-- [`core-block.md`](core-block.md) — ordinary Block confirmation contract 已完成 review，issue #9 implementation-ready；
+- [`core-block.md`](core-block.md) — 已定义并实现 ordinary Block confirmation primitives：recordsRoot、BlockId、packer confirmation 与 `verifyBlock`；
 - [`genesis.md`](genesis.md) — `Genesis = Block` migration baseline，MVP Core Plugin Records 需要 embedded artifact，bootstrap identity/signature 特例仍待 review；
 - [`ordering.md`](ordering.md) — Block confirmation、业务关系和 runtime arrival order 分离。
 
@@ -119,7 +119,17 @@ ordinary Block 保留历史 ordered RecordId Merkle 算法，并从 unsigned Hea
 recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 ```
 
-`core.block@0.1.0` 禁止同一 Block 中 duplicate RecordId；`recordsRoot(recordIds)` 与 `verifyBlock(block)` 都必须拒绝重复值。
+`core.block@0.1.0` 禁止同一 Block 中 duplicate RecordId；`recordsRoot(recordIds)` 与 `verifyBlock(block)` 都拒绝重复值。
+
+实现提供：
+
+```text
+recordsRoot(recordIds)
+blockId(rawHeader | header)
+blockSigningPayload(blockId)
+verifyHeader(header)
+verifyBlock(block)
+```
 
 该规则只保护 confirmation-container commitment，不引入业务 DAG、Plugin activation 或 Repo registration state。
 
