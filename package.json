@@ -14,20 +14,19 @@
   },
   "files": [
     "lib/**/*.js",
-    "lib/**/*.d.ts",
-    "docs/**/*.md",
-    "spec/**/*.md",
-    "README.md"
+    "lib/**/*.d.ts"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:artifacts": "pnpm run build && node scripts/build-core-artifacts.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "check": "pnpm run typecheck && pnpm run test && pnpm run build"
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build:artifacts"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
-    "typescript": "^6.0.3",
+    "esbuild": "0.28.2",
+    "typescript": "6.0.3",
     "vitest": "^4.1.10"
   }
 }

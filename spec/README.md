@@ -41,11 +41,14 @@ core.block
 ## 当前规格状态
 
 - [`core-plugin.md`](core-plugin.md) — 已定义并实现的 Plugin data、FileHash/PluginHash、strict chain-data validation、exact artifact verification、optional embedded artifact；
+- [`core-runtime-abi.md`](core-runtime-abi.md) — `js-esm` ABI v1、single gzip executable bundle 与 deterministic Core artifact packaging；
 - [`core-record.md`](core-record.md) — 已定义并实现 ordinary Record primitive：JCS RecordId、协议来源、EntityPublicKey 作者确认与 signature verification；
 - [`core-entity.md`](core-entity.md) — 已定义并实现 Entity identity data 与共享 EntityPublicKey primitive；注册/准入流程属于 Repo 包；
 - [`core-block.md`](core-block.md) — 已定义并实现 ordinary Block confirmation primitives：recordsRoot、BlockId、packer confirmation 与 `verifyBlock`；
 - [`genesis.md`](genesis.md) — `Genesis = Block` migration baseline，MVP Core Plugin Records 需要 embedded artifact，bootstrap identity/signature 特例仍待 review；
 - [`ordering.md`](ordering.md) — Block confirmation、业务关系和 runtime arrival order 分离。
+
+`docs/`、`spec/`、tests 与历史材料只服务开发/审查，不属于 runtime package 或链上 Plugin artifact。构建、bundle、压缩和发布工具后续由 Plugin Dev SDK 承担；`core.plugin` runtime 职责拆分在 #22 review。
 
 ## Plugin artifact contract
 
@@ -69,7 +72,7 @@ artifact?: {
 
 `artifact` 是存储方式，不进入 canonical Plugin identity。因此 embedded/external/local-cache bytes 只要内容相同，都验证为同一个 PluginHash。
 
-MVP 初始 Core Plugins 应把完整 executable artifact 随 Genesis Plugin Records 上链，从而不需要先建立 npm-style Plugin registry。
+`js-esm` ABI v1 的 executable file 是 `runtime.mjs.gz`：单文件 ESM bundle 的 gzip bytes 被 `files[]` / FileHash 直接承诺并随链分发；Base64 只是 binary wire encoding。MVP 初始 Core Plugins 应把完整 executable artifact 随 Genesis Plugin Records 上链，从而不需要先建立 npm-style Plugin registry。
 
 ## Record contract
 
@@ -135,9 +138,7 @@ verifyBlock(block)
 
 ## Artifact / Asset boundary
 
-Plugin artifact 只包含运行 Plugin 本身所需的代码、schema 与必要小型 runtime data。
-
-大型模型、图片、视频、地图、词典、数据集、游戏资源包等内容应优先由更高层 Asset/Runtime 机制提供。
+Plugin artifact 只包含运行 Plugin 本身所需的代码与必要小型 runtime data。`js-esm` ABI v1 使用 gzip executable bundle；大型模型、图片、视频、地图、词典、数据集、游戏资源包等内容应优先由更高层 Asset/Runtime 机制提供。
 
 `core.plugin` 不依赖 Asset，也不定义 AssetId。
 
@@ -162,6 +163,8 @@ runner/server 与 composition layer 负责：
 ```text
 process / Cordis Context
 Plugin resolution by pluginHash
+verify gzip artifact bytes
+gunzip executable bundle
 Plugin execution
 Plugin artifact cache
 optional external Plugin artifact fetch
