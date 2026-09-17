@@ -1,6 +1,6 @@
 # Genesis Specification
 
-Status: migration baseline only. Genesis remains a Block containing Records. Ordinary `core.record` is now defined; bootstrap exceptions and Block/Header identity still require later Genesis / `core.block` review against source.
+Status: migration baseline only. Genesis remains a Block containing Records. Ordinary `core.record` is defined; bootstrap exceptions and Block/Header identity remain #10 work.
 
 ## Source
 
@@ -19,8 +19,6 @@ Current design source:
 - `docs/record.md`
 
 ## Required structural invariant
-
-Genesis must preserve the source-level container model:
 
 ```text
 Genesis = Block
@@ -43,15 +41,26 @@ core.block
 
 `BlockHeader` belongs to `core.block`; there is no independent `core.block-header` Plugin.
 
-For MVP bootstrap, each initial Core Plugin Record must carry a complete valid `Plugin.artifact` as defined by `spec/core-plugin.md`.
+For MVP bootstrap, each initial Core Plugin Record MUST carry a complete valid embedded gzip `Plugin.artifact` as defined by `spec/core-plugin.md`.
 
-The embedded bytes must cover the exact declared `files[]` set and verify by size/FileHash/PluginHash. This allows a new node to recover and cache Core executable content from Genesis/chain data without requiring an external Plugin registry.
+Verification is:
 
-This is still ordinary Plugin data inside Records; it is not an independent bootstrap package/state format.
+```text
+canonical Base64 decode
+-> exact gzip artifact bytes
+-> ArtifactHash
+-> PluginHash
+-> bounded gunzip (<= 1 MiB)
+-> import ESM
+```
+
+This allows a new node to recover and cache Core executable content from Genesis/chain data without requiring an external Plugin registry.
+
+The embedded artifact remains ordinary Plugin data inside Record.data; it is not an independent bootstrap package/state format and does not alter PluginHash.
 
 ## Ordinary Record baseline
 
-Outside Genesis-specific bootstrap handling, the current Record contract is:
+Outside Genesis-specific bootstrap handling:
 
 ```text
 RawRecord = plugin / pluginHash / createdBy / createdAt / data
@@ -59,51 +68,51 @@ RecordId = DoubleSHA256(JCS(RawRecord))
 signature = domain-separated Ed25519 signature over RecordId
 ```
 
-`core.record` itself must not contain a generic Genesis branch.
+`core.record` MUST NOT contain a generic Genesis branch.
 
 ## Optional external distribution
 
-Registry, mirror, CDN, Repo/object storage, P2P distribution or local caches may later provide the same exact Plugin artifact bytes.
+Registry, mirror, CDN, Repo/object storage, P2P distribution or local caches may later provide the same exact gzip Plugin artifact bytes.
 
-They are optional distribution/availability mechanisms. They do not create a different Plugin identity and are not required for MVP Core bootstrap.
+These are optional distribution/availability mechanisms. They do not create a different ArtifactHash/PluginHash and are not required for MVP bootstrap.
 
 ## Large static resources
 
-Core bootstrap artifacts should remain small and self-contained. Large static content such as models, datasets, images, maps or resource packs should normally be externalized into higher-level Asset/Runtime mechanisms.
+Core bootstrap artifacts SHOULD remain small and self-contained. Large models, datasets, images, maps or resource packs SHOULD be externalized into higher-level Asset/Runtime mechanisms.
 
-The approximately 500 KiB build warning is engineering documentation guidance only and must not become a Genesis/Block validity limit.
+The approximately 500 KiB compressed-artifact warning is build/Dev SDK guidance only. The 1 MiB decompressed runtime limit is an ABI v1 runner safety rule. Neither is a Genesis/Block-specific rule.
 
 ## Deferred bootstrap details
 
 Historical source contains Genesis-specific behaviors that differ from the current ordinary Record contract:
 
-- Protocol Record ID equals historical ProtocolHash instead of ordinary historical `calcRecordID(rawRecord)`;
+- Protocol Record ID equals historical ProtocolHash;
 - bootstrap Protocol Records use `createdBy = "Root"`;
 - bootstrap Protocol Records do not use the current ordinary Record-signature contract;
 - Genesis Header uses `previousHash = "0"`;
 - Root Member and Genesis Repository are created as Records;
 - Genesis Repository public key is used as packer;
-- historical Header signing behavior differs from the current unreviewed `core.block` design;
-- historical Service has a separate `sys.block-header` Protocol even though current architecture intends `BlockHeader` to be owned by `core.block`.
+- historical Header signing behavior differs from current ordinary `core.block`;
+- historical Service has a separate `sys.block-header` Protocol although current architecture owns BlockHeader in `core.block`.
 
-The later Genesis / `core.block` review must decide whether each bootstrap behavior remains a current exception or only a historical fact.
+Genesis #10 decides which remain current bootstrap exceptions and which remain historical facts only.
 
 ## Prohibited design assumptions
 
-Implementations must not assume solely from Genesis that:
+Implementations MUST NOT assume solely from Genesis that:
 
 ```text
 initial Plugins bypass Record.data
 initial Plugins are issuer-less special release entities
-Genesis directly constructs an S0 Plugin state from a separate manifest
+Genesis constructs a separate S0 Plugin state/manifest
 Genesis identity is a hash of a Plugin-entry manifest
 ordinary Plugin release/activation logic belongs to core.plugin
-ordinary core.record should contain if-genesis branches
+ordinary core.record contains if-genesis branches
 ```
 
 ## Current acceptance
 
-Before the later Genesis/Block review, the following are frozen:
+Frozen before #10:
 
 ```text
 Plugin is data
@@ -111,8 +120,9 @@ Plugin data is carried by Record
 Genesis is a Block
 Genesis carries Plugin Records in Block.records[]
 ordinary Record contract is defined by core.record
-initial Core Plugin Records embed complete executable artifacts
-Plugin identity is unchanged by embedded vs external artifact storage
+initial Core Plugin Records embed exact gzip artifacts
+Plugin identity commits to ArtifactHash
+embedded vs external storage does not change PluginHash
 MVP Core bootstrap requires no external Plugin registry
 ```
 
@@ -130,6 +140,4 @@ Do not implement a standalone `recognizeGenesis(initialPluginArtifacts)` path fr
 
 ## Tests
 
-`core.record` tests cover the ordinary Record primitive only.
-
-When Genesis is implemented later, integration tests must verify initial Core Plugin Records and whichever bootstrap exceptions are explicitly retained by the reviewed Genesis/Block contract.
+When Genesis is implemented, integration tests MUST verify initial Core Plugin Records, exact embedded artifact verification/loading, and whichever bootstrap exceptions are explicitly retained by #10.

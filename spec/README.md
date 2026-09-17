@@ -3,29 +3,17 @@
 `spec/` 是从已审查 `docs/` 投影出的开发规格。
 
 ```text
-Ri0n72Y/blockchain-service
-        -> historical Source Facts
-
-docs/
-        -> current requirements + architecture
-
-spec/
-        -> implementation projection
-
+Ri0n72Y/blockchain-service -> historical Source Facts
+docs/                     -> current requirements + architecture
+spec/                     -> implementation projection
 implementation + tests
 ```
 
-`spec/` 不反向改写 `docs/`，也不替代原始 `blockchain-service` 对历史行为的事实记录。
+`spec/` 不反向改写 `docs/`，也不替代旧 `blockchain-service` 对历史行为的事实记录。
 
 ## 实现纪律
 
-如果 spec 标记某个行为为 blocker/open/pending review：
-
-- 不得为了“跑通”自行选择一种语义；
-- 不得用测试固定尚未被接受的设计；
-- 应回到 docs 完成设计决策，再更新 spec。
-
-历史 Source Gap 本身不自动阻塞当前实现。Current Design 可以显式定义新的版本化行为，但必须与历史事实区分。
+如果 spec 标记行为为 blocker/open/pending review，不得为了跑通自行选择语义；应回到 docs 完成设计决策后再更新 spec。
 
 ## 当前 Core Plugin 集合
 
@@ -40,64 +28,76 @@ core.block
 
 ## 当前规格状态
 
-- [`core-plugin.md`](core-plugin.md) — 已定义并实现的 Plugin data、FileHash/PluginHash、strict chain-data validation、exact artifact verification、optional embedded artifact；
-- [`core-runtime-abi.md`](core-runtime-abi.md) — `js-esm` ABI v1、single gzip executable bundle 与 deterministic Core artifact packaging；
-- [`core-record.md`](core-record.md) — 已定义并实现 ordinary Record primitive：JCS RecordId、协议来源、EntityPublicKey 作者确认与 signature verification；
-- [`core-entity.md`](core-entity.md) — 已定义并实现 Entity identity data 与共享 EntityPublicKey primitive；注册/准入流程属于 Repo 包；
-- [`core-block.md`](core-block.md) — 已定义并实现 ordinary Block confirmation primitives：recordsRoot、BlockId、packer confirmation 与 `verifyBlock`；
-- [`genesis.md`](genesis.md) — `Genesis = Block` migration baseline，MVP Core Plugin Records 需要 embedded artifact，bootstrap identity/signature 特例仍待 review；
+- [`core-plugin.md`](core-plugin.md) — 单 artifact Plugin data、ArtifactHash / PluginHash、strict chain-data validation、embedded/external artifact verification；
+- [`core-runtime-abi.md`](core-runtime-abi.md) — `js-esm` ABI v1、single gzip executable artifact、1 MiB bounded gunzip 与 Core artifact build profile；
+- [`core-record.md`](core-record.md) — ordinary Record primitive：JCS RecordId、协议来源、EntityPublicKey 作者确认与 signature verification；
+- [`core-entity.md`](core-entity.md) — Entity identity data 与共享 EntityPublicKey primitive；
+- [`core-block.md`](core-block.md) — ordinary Block confirmation primitives：recordsRoot、BlockId、packer confirmation 与 `verifyBlock`；
+- [`genesis.md`](genesis.md) — `Genesis = Block` baseline；MVP Core Plugin Records 携带 embedded artifact；
 - [`ordering.md`](ordering.md) — Block confirmation、业务关系和 runtime arrival order 分离。
-
-`docs/`、`spec/`、tests 与历史材料只服务开发/审查，不属于 runtime package 或链上 Plugin artifact。构建、bundle、压缩和发布工具后续由 Plugin Dev SDK 承担；`core.plugin` runtime 职责拆分在 #22 review。
 
 ## Plugin artifact contract
 
 ```text
-Plugin descriptor
-  -> files[] { path, size, FileHash }
-  -> canonical JCS identity form
+exact gzip artifact bytes
+  -> DoubleSHA256
+  -> ArtifactHash
+
+Plugin identity
+  = name / version / runtime / dependencies / artifactHash
+  -> JCS
   -> DoubleSHA256
   -> PluginHash
 ```
 
-Plugin 可以额外携带：
+Optional embedded artifact：
 
 ```text
-artifact?: {
-  canonicalPath: canonicalBase64RawBytes
-}
+artifact?: canonicalBase64(exact gzip artifact bytes)
 ```
 
-`artifact` 一旦存在必须完整覆盖 `files[]` 并通过 exact size/FileHash verification。
+`artifact` 不进入 PluginHash；embedded/cache/mirror/other resolver 取得的相同 bytes 验证为同一个 Plugin。
 
-`artifact` 是存储方式，不进入 canonical Plugin identity。因此 embedded/external/local-cache bytes 只要内容相同，都验证为同一个 PluginHash。
+`js-esm` ABI v1 只有一个 executable artifact，因此不再存在 `runtime.entry`、`files[]`、`PluginFile`、FileHash manifest 或 runtime schema file。
 
-`js-esm` ABI v1 的 executable file 是 `runtime.mjs.gz`：单文件 ESM bundle 的 gzip bytes 被 `files[]` / FileHash 直接承诺并随链分发；Base64 只是 binary wire encoding。MVP 初始 Core Plugins 应把完整 executable artifact 随 Genesis Plugin Records 上链，从而不需要先建立 npm-style Plugin registry。
+历史 CUE 仅作为 Source Fact 保留，不是当前 runtime schema。
+
+## Runtime verification API
+
+`core.plugin` 公开 API：
+
+```text
+PluginError
+validatePlugin
+artifactHash
+pluginHash
+verifyArtifact
+verifyEmbeddedArtifact
+```
+
+JCS serialization、canonical identity construction 与 build/package helpers 必须保持 internal。
+
+## Runtime size boundary
+
+```text
+compressed artifact > ~500 KiB
+-> build/Dev SDK warning only
+
+uncompressed js-esm runtime > 1 MiB
+-> ABI v1 hard reject before import
+```
+
+1 MiB 既防 gzip-bomb 类异常展开，也约束单 Plugin 规模。超过该规模应优先拆 Plugin 或将非执行内容移到 Asset / Runtime。
 
 ## Record contract
 
 ```text
-RawRecord
-= plugin / pluginHash / createdBy / createdAt / data
-
-Record
-= id / signature + RawRecord
+RawRecord = plugin / pluginHash / createdBy / createdAt / data
+Record    = id / signature + RawRecord
+RecordId  = DoubleSHA256(JCS(RawRecord))
 ```
 
-```text
-plugin / pluginHash -> protocol source
-createdBy / signature -> actor source
-```
-
-`pluginHash` 是 runner/runtime 使用的机器权威 identity；`plugin = name@version` 是被签名的人类可读声明。
-
-```text
-RecordId = DoubleSHA256(JCS(RawRecord))
-```
-
-RecordId 承诺完整 RawRecord，包括完整 `data`。普通 signature 使用固定 domain-separated Ed25519 signature over RecordId。
-
-`core.record` 不 resolve/execute Plugin，不包含 activation、Block availability、Entity registration state 或 Genesis exception。
+`pluginHash` 是 runner/runtime 的机器权威 identity；`plugin = name@version` 是被签名的人类可读声明。
 
 ## Entity boundary
 
@@ -108,50 +108,32 @@ Entity {
 }
 ```
 
-`core.entity` 负责 EntityPublicKey 的 Base58btc / 32-byte Ed25519 表示验证，以及 Entity data 的 exact shape。
-
-首次/重复注册、初始例外、准入与身份上链流程属于 Repo 包/composition layer。Core 的 `Record.createdBy` / `BlockHeader.packer` 验证并不自行证明该 identity 已被 Repo 注册或授权。
+首次/重复注册、初始例外、准入与身份上链流程属于 Repo/composition layer。
 
 ## Block contract
 
-ordinary Block 保留历史 ordered RecordId Merkle 算法，并从 unsigned Header 派生 BlockId。
-
-由于历史 odd-leaf duplication 存在：
+ordinary Block 保留 ordered RecordId Merkle 算法。由于 odd-leaf duplication：
 
 ```text
 recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 ```
 
-`core.block@0.1.0` 禁止同一 Block 中 duplicate RecordId；`recordsRoot(recordIds)` 与 `verifyBlock(block)` 都拒绝重复值。
-
-实现提供：
-
-```text
-recordsRoot(recordIds)
-blockId(rawHeader | header)
-blockSigningPayload(blockId)
-verifyHeader(header)
-verifyBlock(block)
-```
-
-该规则只保护 confirmation-container commitment，不引入业务 DAG、Plugin activation 或 Repo registration state。
+因此同一 Block 禁止 duplicate RecordId。
 
 ## Artifact / Asset boundary
 
-Plugin artifact 只包含运行 Plugin 本身所需的代码与必要小型 runtime data。`js-esm` ABI v1 使用 gzip executable bundle；大型模型、图片、视频、地图、词典、数据集、游戏资源包等内容应优先由更高层 Asset/Runtime 机制提供。
+Plugin artifact 只包含运行 Plugin 本身所需的代码与必要小型 runtime data。大型模型、图片、视频、地图、词典、数据集、游戏资源包等内容应由更高层 Asset / Runtime 提供。
 
 `core.plugin` 不依赖 Asset，也不定义 AssetId。
-
-Build tooling 的约 500 KiB warning 是 docs 中的工程建议，不属于 consensus validity，也不要求 Core validator 实现该阈值。
 
 ## Identity / encoding boundary
 
 ```text
-Entity public key -> base58btc 32-byte Ed25519 identity defined by core.entity
+Entity public key -> base58btc 32-byte Ed25519 identity
 Signature         -> signature result, not Entity identity
 RecordId          -> DoubleSHA256(JCS(RawRecord)), lowercase hex
-FileHash          -> DoubleSHA256(raw bytes), lowercase hex
-PluginHash        -> DoubleSHA256(canonical Plugin identity), lowercase hex
+ArtifactHash      -> DoubleSHA256(exact gzip artifact bytes), lowercase hex
+PluginHash        -> DoubleSHA256(JCS(canonical Plugin identity)), lowercase hex
 RecordsRoot       -> ordered RecordId Merkle root, duplicate RecordIds forbidden
 BlockId           -> DoubleSHA256(JCS(unsigned BlockHeader)), lowercase hex
 ```
@@ -163,19 +145,21 @@ runner/server 与 composition layer 负责：
 ```text
 process / Cordis Context
 Plugin resolution by pluginHash
-verify gzip artifact bytes
-gunzip executable bundle
-Plugin execution
-Plugin artifact cache
-optional external Plugin artifact fetch
+verify exact gzip artifact bytes
+bounded gunzip / Plugin execution
+Plugin artifact cache / external fetch
 Asset fetch/storage
-persistence
-transport/sync
+persistence / transport / sync
 secret-key storage / signing UX
-Entity registration/admission policy through Repo package
+Entity registration/admission policy
 PoA authorization
 sandbox/capability policy
 observability
 ```
 
-Core specs 只规定相同显式输入下的确定性数据/验证行为。
+## Deferred work
+
+- #22 slim `core.plugin` runtime contract 已完成；
+- #23 defines Plugin Dev SDK build/bundle/gzip/reproducible-build tooling;
+- #24 defines release/distribution/discovery channels;
+- #10 finalizes Genesis after Plugin identities are stable.
