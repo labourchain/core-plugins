@@ -26,6 +26,7 @@
     "check": "pnpm run typecheck && pnpm run test && pnpm run build:artifacts && node scripts/smoke-package-exports.mjs && pnpm run verify:release"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
     "@types/node": "^22.20.0",
     "esbuild": "0.28.2",
     "typescript": "6.0.3",

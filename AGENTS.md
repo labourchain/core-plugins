@@ -52,9 +52,9 @@ If a spec is pending review, do not implement one possible answer merely to make
 
 Use **Protocol** / **protocol** for LabourChain chain-facing stable semantics and identity.
 
-Reserve **Plugin** / **plugin** for the Cordis runtime abstraction and genuine Cordis concepts such as `Plugin`, `ctx.plugin()`, Context, Fiber, Service, inject, effect, and lifecycle.
+Reserve **Plugin** / **plugin** for the Cordis runtime abstraction and genuine Cordis concepts such as `Plugin`, `ctx.plugin()`, Context, Fiber, Service, inject, provide, effect, and lifecycle.
 
-A LabourChain Protocol implementation may be executed as a Cordis Plugin, but Protocol and Plugin are not interchangeable terms. Do not reintroduce `PluginHash`, `Record.plugin`, `core.plugin`, or other chain-facing Plugin terminology.
+A LabourChain Protocol implementation executes as a Cordis Plugin, but Protocol and Plugin are not interchangeable terms. Do not reintroduce `PluginHash`, `Record.plugin`, `core.plugin`, or other chain-facing Plugin terminology.
 
 The current Core Protocol set is:
 
@@ -86,21 +86,42 @@ Do not add a second agent manifest, AI metadata schema, runtime discovery docume
 
 Core confirms Records in Blocks. It does not directly own Labour, Asset, Project, Repository, Member, SDK, package publishing, persistence, network governance, UI, or business DAG semantics.
 
+`core.protocol` owns deterministic Protocol chain-data validation, ArtifactHash/ProtocolHash and exact artifact verification. It does **not** own ESM import, Cordis Plugin shape validation, `plugin.inject`, dependency projection, Protocol dependency resolution, runtime availability, or mounting.
+
+The accepted ABI boundary is:
+
+```text
+runtime.kind = "cordis-js-esm"
+runtime.abi = 1
+release artifact = <protocol>-<version>.cordis-js-esm.gz
+```
+
+The imported ESM exposes exactly `plugin`. The Host/build gate validates canonical `plugin.name`, `plugin.provide`, callable `plugin.apply`, Cordis Inject form, and semantic dependency projection. `apply()` performs actual Fiber-owned `ctx.provide()` registration.
+
+`Protocol.dependencies[]` is chain-facing exact semantic dependency data. `core.protocol` validates its fields, exact SemVer, ProtocolHash digest, uniqueness, and canonical order only. The SDK/build gate and Repo Node/Host loader validate:
+
+```text
+project(Protocol.dependencies[]) ⊆ normalizedServiceNames(plugin.inject)
+```
+
+The Host separately resolves every dependency by exact `protocolHash`. Never move this Cordis-aware projection validation into `core.protocol`.
+
 Core does not provide private-key signing, Protocol build/publish/resolution/loading, Entity registration state, Repository/Member authorization, PoA authorization, canonical-chain selection, storage/network transport, or Cordis runtime lifecycle unless a reviewed Core spec explicitly adds such responsibility.
 
 Keep Block confirmation order distinct from business relations and runtime arrival/resolution order. Records in one Block may have domain relationships; Core does not infer or validate a generic business DAG from Block order.
 
-Keep Protocol semantics host-agnostic. Process startup, Cordis hosting, artifact cache/fetch, persistence, transport, secret-key storage, packer authorization, sandbox/capability policy, and observability belong outside Core.
+Keep Protocol semantics host-agnostic. Process startup, Host Cordis Context, artifact cache/fetch, persistence, transport, secret-key storage, packer authorization, sandbox/capability policy, and observability belong outside Core.
+
+Protocol artifacts must not bundle another Cordis runtime. Do not introduce a LabourChain Plugin Manager, Runner, Service Container, or dependency graph parallel to Cordis.
 
 ## Current review gates
 
-Do not silently resolve these open boundaries while working on unrelated changes:
+Do not silently resolve these boundaries while working on unrelated changes:
 
-- **Protocol/Cordis runtime alignment #31** — current `js-esm` packaging is implemented, but the final import-to-Cordis-Plugin contract and the relationship between Protocol dependencies and Cordis `inject` require a dedicated review before v0.1.0;
+- **Protocol/Cordis runtime alignment #31** — docs/spec now define `cordis-js-esm` ABI v1. Implementation work is limited to projecting that accepted contract into Core runtime descriptors, generated thin Plugin artifacts, build/release validation, release naming/tests, and intentional identity fixture updates. Do not expand #31 into the full SDK or Node architecture;
 - **Genesis #10** — Genesis remains an ordinary Block of ordinary Records; remaining work is deterministic bootstrap composition/fixture design, not reopening ordinary Record/Block identity rules;
-- **Protocol Dev SDK #23** — developer-side build tooling remains deferred until Core/Repo package boundaries are complete.
-
-Release/distribution is GitHub Release-only for now and is defined by `docs/release.md` and `spec/release.md`.
+- **Protocol Dev SDK #23** — the generalized developer-side SDK remains deferred. #31 may implement only the current Core build gate needed to verify its generated artifacts;
+- **Release/distribution #24** — GitHub Release-only is already defined. Runtime migration may update filenames/verifier expectations but must not add another distribution channel.
 
 ## Documentation discipline
 
@@ -117,3 +138,5 @@ When executable Node.js code is present, CI must validate the supported Node.js 
 Do not add an operating-system matrix unless concrete platform-specific behavior requires it.
 
 Tests protect meaningful contracts and demonstrated regressions. Coverage percentage, job count, and platform count are not quality goals by themselves.
+
+For #31, meaningful runtime regression coverage includes exact `plugin` export/metadata validation, actual Cordis mount/provide behavior, dependency projection outside `core.protocol`, bounded gunzip, canonical release filenames, and frozen Core executable identities.

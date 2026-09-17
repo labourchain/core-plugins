@@ -12,7 +12,7 @@ Protocol 作为普通 Record 的数据进入链：
 Record.data = Protocol
 ```
 
-当前设计目标：
+当前模型：
 
 ```ts
 interface Protocol {
@@ -94,7 +94,7 @@ already-built Cordis Plugin bundle
 
 而不是源码包、需要节点安装的 npm package 或任意 ESM library namespace。Node 的解压、缓存、临时 materialization、ESM import、Plugin validation 和 mount 是加载过程，不是 build。
 
-最终 release artifact filename 统一为：
+release artifact filename 统一为：
 
 ```text
 <protocol>-<version>.cordis-js-esm.gz
@@ -203,7 +203,7 @@ export const plugin = {
 }
 ```
 
-`plugin.provide` 是声明；`ctx.provide()` 是实际 service 注册。ABI/build/Node validation 应要求两者都指向同一个 canonical Protocol service key。
+`plugin.provide` 是声明；`ctx.provide()` 是实际 service 注册。ABI/build/Node validation 要求两者都指向同一个 canonical Protocol service key。
 
 该 service key 不包含自身 ProtocolHash，避免 executable bytes 内嵌自身 hash 导致自引用。Host 在 mount 前已经知道并验证 descriptor 的 exact ProtocolHash，并负责拒绝同一 isolation scope 内相同 `name@version` 对应多个不同 ProtocolHash 的歧义。
 
@@ -300,22 +300,17 @@ Genesis 继续是普通 Block；初始 Core Protocol 通过普通 Protocol Recor
 
 Genesis 的 ordinary Record/Block 组合由 #10 独立处理；`core.protocol` 不定义 Genesis-specific validity path。
 
-## Pre-v0.1 migration
+## Current implementation
 
-当前实现仍生成历史 `js-esm` pure API artifacts。#31 将在本 docs 通过审查后更新 spec/implementation：
+四个 Core Protocol 已按本模型生成 executable artifact：
 
 ```text
-js-esm
--> cordis-js-esm
-
-*.js-esm.gz
--> *.cordis-js-esm.gz
-
-arbitrary required API exports
--> explicit single `plugin` runtime export
-
-pure API artifact
--> thin Cordis Plugin wrapper around pure implementation
+runtime.kind = cordis-js-esm
+*.cordis-js-esm.gz
+ESM namespace = { plugin }
+pure package API -> thin Cordis Plugin wrapper -> canonical Protocol service
 ```
 
-这会改变 current pre-release Core artifact bytes、ArtifactHash 和 ProtocolHash。v0.1.0 尚未发布，因此不保留旧 runtime kind、旧 filename 或旧 artifact compatibility alias。
+build/release gate 在 `core.protocol` 之外验证 Plugin runtime contract、semantic dependency projection 与实际 Cordis mount。当前四个 Core Protocol 的链级 `dependencies[]` 均为空；普通源码依赖被 bundle 到对应单 artifact 中。
+
+这次迁移改变了 pre-release artifact bytes、ArtifactHash 与 ProtocolHash，并已显式更新 frozen identity fixture。`v0.1.0` 尚未发布，因此不保留旧 `js-esm` runtime kind、旧 filename 或旧 artifact compatibility alias。

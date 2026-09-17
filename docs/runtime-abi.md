@@ -1,6 +1,6 @@
 # Core Protocol Runtime ABI
 
-本文定义 Core Protocol 当前接受的 executable runtime 目标。历史 `js-esm` packaging 已实现，但在 v0.1.0 前由 #31 收敛为明确的 Cordis Plugin ABI；spec 与实现应在 docs 稳定后再投影。
+本文定义 Core Protocol 当前接受并实现的 executable runtime contract。历史 `js-esm` packaging 仅作为 pre-v0.1 迁移事实保留；当前 ABI 是明确的 Cordis Plugin ABI。
 
 ## ABI v1
 
@@ -102,6 +102,8 @@ Host Cordis
 -> ctx.plugin(artifact.plugin)
 ```
 
+当前 Core build/release smoke 使用与 Repository Host 同一 `@deepseek-ai/cordis` runtime family 验证实际 mount；该 Cordis package 属于 build/test dependency，不进入 artifact bytes。
+
 ## Protocol dependencies and Cordis inject
 
 `Protocol.dependencies[]` 与 Cordis `inject` 是同一依赖关系在两个层面的表达：
@@ -201,6 +203,7 @@ source entry
 -> enforce explicit `plugin` export
 -> validate plugin.name / provide / inject / apply
 -> validate semantic dependency -> inject projection
+-> actual Cordis mount smoke
 -> deterministic gzip
 -> ArtifactHash / ProtocolHash
 -> diagnostics / release preparation
@@ -221,18 +224,23 @@ resolve
 
 这个边界允许链只保存 descriptor + optional exact artifact bytes，而不要求每个节点携带 Protocol build toolchain。
 
-## Current Core migration
+## Current Core implementation
 
-当前四个 Core Protocol 的实现代码仍以纯 API ESM bundle 生成 artifact。#31 后续 spec/implementation 应为它们增加 thin Cordis Plugin runtime entry，并把 runtime kind 从历史 `js-esm` 迁移为 `cordis-js-esm`。
-
-最终 release artifact filename 统一为：
+当前四个 Core Protocol 已实现 thin Cordis Plugin runtime entry，package subpath 的纯 API 保持不变：
 
 ```text
-<protocol>-<version>.cordis-js-esm.gz
+core.protocol
+core.entity
+core.record
+core.block
+
+runtime.kind = cordis-js-esm
+artifact filename = <protocol>-<version>.cordis-js-esm.gz
+ESM namespace = { plugin }
 ```
 
-文件名属于发行元数据，不进入 ProtocolHash；但 build/release verifier MUST 固定这一命名，避免 runtime kind 与 release artifact naming 漂移。
+当前四个 Core Protocol 的 `dependencies[] = []`，源码级相互引用被 bundle 到各自 single artifact 中。build/release gate 已验证 exact module export、`name/provide/inject/apply`、dependency projection 与实际 Cordis mount。
 
-迁移会改变 artifact bytes、ArtifactHash 与 ProtocolHash；由于 v0.1.0 尚未发布，这属于预发布 identity 收敛，不需要保留旧 `js-esm` compatibility path。
+本迁移已改变 pre-release artifact bytes、ArtifactHash 与 ProtocolHash，并显式更新 frozen identity fixture。由于 v0.1.0 尚未发布，不保留旧 `js-esm` compatibility path。
 
 Genesis #10 消费最终冻结后的 ordinary Protocol values / ProtocolHashes；本 ABI 不定义 Genesis-specific Record 或 Block 规则。

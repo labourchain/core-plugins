@@ -26,13 +26,13 @@ core.block
 
 `BlockHeader` 是 `core.block` 的公开类型，不存在独立 `core.block-header` Protocol/spec。
 
-LabourChain 的 **Protocol** 是链上稳定、版本化的语义与 identity；**Plugin** 保留给 Cordis runtime abstraction。Spec 不得把两者重新合并成一个术语。
+LabourChain 的 **Protocol** 是链上稳定、版本化的语义与 exact executable identity；**Plugin** 保留给 Cordis runtime abstraction。Spec 不得把两者重新合并成一个术语。
 
 ## 当前规格状态
 
-- [`core-protocol.md`](core-protocol.md) — 单 artifact Protocol data、ArtifactHash / ProtocolHash、strict chain-data validation、embedded/external artifact verification；
-- [`core-runtime-abi.md`](core-runtime-abi.md) — 当前 `js-esm` ABI v1、single gzip executable artifact、1 MiB bounded gunzip 与 Core artifact build profile；
-- [`release.md`](release.md) — GitHub Release-only 发行资产、tag/version gate、release build pin、identity regression gate 与 npm 延后边界；
+- [`core-protocol.md`](core-protocol.md) — 单 artifact Protocol data、ArtifactHash / ProtocolHash、strict chain-data validation、embedded/external artifact verification，以及明确排除 Cordis-aware dependency projection；
+- [`core-runtime-abi.md`](core-runtime-abi.md) — `cordis-js-esm` ABI v1、ready-to-mount Cordis object Plugin、canonical service、dependency projection、1 MiB bounded gunzip 与 Core artifact build/mount gate；
+- [`release.md`](release.md) — `.cordis-js-esm.gz` GitHub Release-only 发行资产、tag/version gate、runtime verification、identity regression gate 与 npm 延后边界；
 - [`core-record.md`](core-record.md) — ordinary Record primitive：JCS RecordId、Protocol 来源、EntityPublicKey 作者确认与 signature verification；
 - [`core-entity.md`](core-entity.md) — Entity identity data 与共享 EntityPublicKey primitive；
 - [`core-block.md`](core-block.md) — ordinary Block confirmation primitives：recordsRoot、BlockId、packer confirmation 与 `verifyBlock`；
@@ -42,7 +42,10 @@ LabourChain 的 **Protocol** 是链上稳定、版本化的语义与 identity；
 ## Protocol artifact contract
 
 ```text
-exact gzip artifact bytes
+runtime.kind = "cordis-js-esm"
+runtime.abi = 1
+
+exact gzip Cordis Plugin artifact bytes
   -> DoubleSHA256
   -> ArtifactHash
 
@@ -59,15 +62,62 @@ Optional embedded artifact：
 artifact?: canonicalBase64(exact gzip artifact bytes)
 ```
 
-`artifact` 不进入 ProtocolHash；embedded/cache/mirror/other resolver 取得的相同 bytes 验证为同一个 Protocol。
+`artifact` 不进入 ProtocolHash；embedded/cache/release/mirror 取得的相同 bytes 验证为同一个 Protocol。
 
-当前 `js-esm` ABI v1 只有一个 executable artifact，因此不再存在 `runtime.entry`、`files[]`、FileHash manifest 或 runtime schema file。
+ABI v1 只有一个 executable artifact，解压后 ESM namespace 只允许：
 
-历史 CUE 仅作为 Source Fact 保留，不是当前 runtime schema。
+```text
+plugin
+```
+
+其最小 runtime contract：
+
+```text
+plugin.name    = <name>@<version>
+plugin.provide = protocol:<name>@<version>
+plugin.inject  = Cordis Inject
+plugin.apply   = callable
+```
+
+`apply()` 使用 `ctx.provide()` 实际提供同一个 canonical Protocol service。artifact 不额外导出纯 API namespace，也不 bundle 第二份 Cordis runtime。
+
+## Dependency validation boundary
+
+`Protocol.dependencies[]` 记录链上 exact semantic dependency：
+
+```text
+name + version + ProtocolHash
+```
+
+`core.protocol` 只验证它作为 Protocol data/identity input 的：
+
+```text
+shape / name / exact SemVer / digest / uniqueness / canonical order
+```
+
+它不导入 artifact，不读取 `plugin.inject`，也不验证 dependency projection。
+
+投影规则：
+
+```text
+{name, version, protocolHash}
+-> protocol:<name>@<version>
+
+project(Protocol.dependencies[]) ⊆ normalizedServiceNames(plugin.inject)
+```
+
+该规则由两个边界验证：
+
+```text
+Protocol Dev SDK / current build gate
+Repo Node / Host loader
+```
+
+Host 另外按 `protocolHash` 解析并验证 exact dependency implementation。Cordis `inject` 只负责 runtime readiness/lifecycle。
 
 ## Runtime verification API
 
-`core.protocol` 公开 API：
+`core.protocol` 公开 API 保持：
 
 ```text
 ProtocolError
@@ -78,7 +128,7 @@ verifyArtifact
 verifyEmbeddedArtifact
 ```
 
-JCS serialization、canonical identity construction 与 build/package helpers 必须保持 internal。
+JCS serialization、canonical identity construction、Cordis Plugin validation、Inject normalization、dependency projection 与 build/package helpers 必须保持在 `core.protocol` 之外。
 
 ## Runtime size boundary
 
@@ -86,7 +136,7 @@ JCS serialization、canonical identity construction 与 build/package helpers �
 compressed artifact > ~500 KiB
 -> build/Dev SDK warning only
 
-uncompressed js-esm runtime > 1 MiB
+uncompressed cordis-js-esm runtime > 1 MiB
 -> ABI v1 hard reject before import
 ```
 
@@ -94,7 +144,13 @@ uncompressed js-esm runtime > 1 MiB
 
 ## Release contract
 
-当前 `package.json.version` 是四个 Core Protocol 的统一 release version。构建输出每个 Protocol 的 versioned descriptor JSON 与 raw `.js-esm.gz`，并生成 `manifest.json`；`pnpm check` 必须从磁盘重新验证 exact nine-file release set、canonical filenames、descriptor/manifest/actual diagnostics 与 frozen Core ProtocolHash fixtures。
+当前 `package.json.version` 是四个 Core Protocol 的统一 release version。构建输出每个 Protocol 的 versioned descriptor JSON 与：
+
+```text
+<protocol>-<version>.cordis-js-esm.gz
+```
+
+并生成 `manifest.json`。`pnpm check` 必须从磁盘重新验证 exact nine-file release set、canonical filenames、descriptor/manifest/actual diagnostics、runtime Plugin contract、dependency projection、actual Cordis mount 与 frozen Core ProtocolHash fixtures。
 
 GitHub Release 仅作为分发渠道。tag 必须使用 `vMAJOR.MINOR.PATCH` 并与 generated manifest version 一致；Release job 固定当前 canonical build toolchain，先验证 tag commit 属于 `main`，再安装项目依赖，创建 draft、上传完整资产后才发布。npm publishing 当前禁止。
 
@@ -164,11 +220,14 @@ BlockId           -> DoubleSHA256(JCS(unsigned BlockHeader)), lowercase hex
 runtime/composition layer 负责：
 
 ```text
-process / Cordis Context
-Protocol resolution by protocolHash
-verify exact gzip artifact bytes
-bounded gunzip / module loading
-Cordis Plugin mounting / lifecycle
+process / Host Cordis Context
+Protocol resolution by ProtocolHash
+verify exact gzip artifact bytes through core.protocol
+bounded gunzip / ESM import
+Cordis Plugin contract validation
+Protocol.dependencies[] -> plugin.inject projection validation
+exact dependency ProtocolHash resolution
+ctx.plugin(plugin) / Cordis lifecycle
 Protocol artifact cache / external fetch
 Asset fetch/storage
 persistence / transport / sync
@@ -179,12 +238,12 @@ sandbox/capability policy
 observability
 ```
 
-当前 ABI 只冻结已经实现的 artifact/load boundary；Protocol implementation 与 Cordis Plugin contract、`dependencies[]` 与 Cordis `inject` 的最终关系由 #31 在 v0.1.0 前显式审查。
+它不重新 build、install 或 rebundle 已验证的 Protocol artifact，也不建立第二套 Plugin Manager/Runner/Service Container。
 
 ## Deferred work
 
 - #22 的 single-artifact identity/runtime-verification 基础已完成，#29 恢复其 Protocol 命名；
-- #23 Protocol Dev SDK 延后到 Core/Repo package boundaries 完成后；
+- #31 已完成 docs 设计审查，当前实现任务只投影并落地 `cordis-js-esm` runtime contract；
+- #23 Protocol Dev SDK 仍延后，不在 #31 中实现完整 SDK；
 - #24 GitHub Release-only release/distribution flow 已收敛；
-- #31 reviews Protocol/Cordis runtime alignment before v0.1.0;
-- #10 finalizes only deterministic Genesis assembly/fixture details on top of ordinary Core primitives.
+- #10 只收敛 deterministic Genesis assembly/fixture details，不重新打开 ordinary Core identity rules。

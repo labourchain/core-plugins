@@ -12,7 +12,7 @@ function fixture(): Protocol {
   return {
     name: 'test.protocol-shape',
     version: '0.1.0',
-    runtime: { kind: 'js-esm', abi: 1 },
+    runtime: { kind: 'cordis-js-esm', abi: 1 },
     dependencies: [],
     artifactHash: artifactHash(runtimeBytes),
   }
@@ -56,7 +56,7 @@ describe('core.protocol structural trust boundary', () => {
     expect(() => validateProtocol(accessorRuntime)).toThrow(/enumerable data property/)
 
     class RuntimeDescriptor {
-      kind = 'js-esm' as const
+      kind = 'cordis-js-esm' as const
       abi = 1
     }
     expect(() => validateProtocol({ ...fixture(), runtime: new RuntimeDescriptor() })).toThrow(

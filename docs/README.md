@@ -25,7 +25,7 @@ LabourChain 使用 **Protocol** 表示链上稳定、版本化、可被历史事
 
 ## 当前 Protocol 原则
 
-Protocol 是小型可执行协议单元。当前设计将 runtime 收敛为：
+Protocol 是小型可执行协议单元。当前 runtime 为：
 
 ```text
 runtime.kind = "cordis-js-esm"
@@ -49,7 +49,7 @@ plugin.apply = callable
 
 `plugin.provide` 是 Cordis metadata 声明，`apply()` 中使用 `ctx.provide()` 实际注册 canonical Protocol service。
 
-最终 release artifact filename 固定为：
+release artifact filename 固定为：
 
 ```text
 <protocol>-<version>.cordis-js-esm.gz
@@ -191,12 +191,13 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 当前：
 
-- `core.protocol` single-artifact identity/runtime-verification 基础已实现；
+- `core.protocol` single-artifact identity/runtime-verification 已实现，并使用 `cordis-js-esm` runtime kind；
 - `core.record` 已实现；
 - `core.entity` 已实现；
 - ordinary `core.block` confirmation primitives 已实现；
-- 历史 `js-esm` / bounded gzip artifact packaging 已实现，但 #31 已在 docs 层接受迁移到 `cordis-js-esm`；
-- #31 下一步是把 explicit `plugin` export、`provide`/`inject` runtime contract、dependency projection 与 `.cordis-js-esm.gz` naming 投影到 spec/implementation；
+- 四个 Core executable artifacts 已改为只导出 `plugin` 的 thin Cordis Plugin wrappers，同时 package subpath API 保持纯实现；
+- build/release gate 在 `core.protocol` 之外验证 `plugin.name/provide/inject/apply`、semantic dependency projection 与实际 Cordis mount；
+- release asset naming 已使用 `.cordis-js-esm.gz`，对应 Core ProtocolHash fixture 在迁移时显式更新；
 - Protocol Dev SDK 由 #23 延后到 Core/Repo 边界完成后；
 - GitHub Release-only release/distribution 由 #24 收敛；
 - Genesis #10 只继续收敛 deterministic assembly/fixture，不重新打开 ordinary Record/Block identity rules。

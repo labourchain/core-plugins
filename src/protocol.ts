@@ -4,7 +4,7 @@ export type ArtifactHash = string
 export type ProtocolHash = string
 
 export interface ProtocolRuntime {
-  kind: 'js-esm'
+  kind: 'cordis-js-esm'
   abi: number
 }
 
@@ -170,15 +170,15 @@ function decodeCanonicalBase64(value: unknown, label: string): Uint8Array {
 function parseRuntime(value: unknown): ProtocolRuntime {
   assertExactKeys(value, ['kind', 'abi'], 'runtime')
 
-  if (value.kind !== 'js-esm') {
-    throw new ProtocolError('runtime.kind must be "js-esm"')
+  if (value.kind !== 'cordis-js-esm') {
+    throw new ProtocolError('runtime.kind must be "cordis-js-esm"')
   }
   if (!Number.isSafeInteger(value.abi) || (value.abi as number) <= 0) {
     throw new ProtocolError('runtime.abi must be a positive safe integer')
   }
 
   return {
-    kind: 'js-esm',
+    kind: 'cordis-js-esm',
     abi: value.abi as number,
   }
 }

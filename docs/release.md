@@ -31,26 +31,26 @@ tag 版本必须与 `package.json.version` 以及生成的四个 Protocol descri
 
 ## Runtime artifact contract
 
-#31 接受：
+当前实现使用：
 
 ```text
 runtime.kind = "cordis-js-esm"
 runtime.abi = 1
 ```
 
-最终 release artifact 解压后必须是 single-file ESM，并显式导出可直接交给 Host `ctx.plugin()` 的唯一 runtime entry `plugin`。
+release artifact 解压后必须是 single-file ESM，并显式导出可直接交给 Host `ctx.plugin()` 的唯一 runtime entry `plugin`。
 
-最终 artifact filename 同步 runtime kind：
+artifact filename 同步 runtime kind：
 
 ```text
 <protocol>-<version>.cordis-js-esm.gz
 ```
 
-文件名不参与 ProtocolHash，但属于冻结的 release contract。v0.1.0 前直接替换旧 `.js-esm.gz` 命名，不保留兼容副本。
+文件名不参与 ProtocolHash，但属于冻结的 release contract。v0.1.0 前已直接替换旧 `.js-esm.gz` 命名，不保留兼容副本。
 
 ## Release assets
 
-`pnpm build:artifacts` 最终生成且只生成：
+`pnpm build:artifacts` 生成且只生成：
 
 ```text
 dist/core-artifacts/
@@ -88,8 +88,10 @@ manifest.json
 -> bounded gunzip
 -> import ESM
 -> require namespace exports exactly `plugin`
--> validate Cordis Plugin runtime shape
+-> validate plugin.name / provide / inject / apply
 -> validate dependencies[] -> plugin.inject projection
+-> mount through Host Cordis and verify canonical service is provided
+-> dispose Cordis Context/Fiber
 -> verify manifest diagnostics == descriptor diagnostics == actual sizes
 -> verify frozen Core ProtocolHash fixtures
 ```
@@ -97,10 +99,10 @@ manifest.json
 这里要区分验证所有权：
 
 - `core.protocol` 只负责 descriptor、ProtocolHash、ArtifactHash 与 embedded artifact identity；
-- release/build gate 负责同时检查 descriptor 与 executable module，因此在这里验证 `dependencies[] -> plugin.inject` projection；
-- Repo Node 加载时必须再次做同样的 projection 检查。
+- release/build gate 负责同时检查 descriptor 与 executable module，因此在这里验证 Cordis Plugin runtime contract、`dependencies[] -> plugin.inject` projection 与实际 mount；
+- Repo Node 加载时必须再次做 runtime contract/projection 检查，并按 exact dependency ProtocolHash 解析依赖。
 
-当前四个 pre-#31 Core ProtocolHash 只是旧 builder 的 regression fixture。迁移到 `cordis-js-esm` 必然改变 artifact bytes、ArtifactHash 与 ProtocolHash，因此实现 #31 时必须显式更新 fixture，并在 diff 中解释 identity 变化来源。
+`cordis-js-esm` 迁移已经显式改变四个 Core artifact bytes、ArtifactHash 与 ProtocolHash；当前 verifier 中的四个 ProtocolHash 是迁移后的 frozen v0.1 candidate identity fixture。后续任何有意改变 executable identity 的修改都必须再次显式更新 fixture。
 
 `pnpm check` 包含 release asset verification，因此普通 PR CI 也保护 release contract。
 
@@ -109,14 +111,15 @@ manifest.json
 Protocol Dev SDK 与通用 reproducible-build tooling 仍由 #23 延后处理。为了避免同一 Protocol version 因 Node/zlib 小版本变化生成不同 gzip bytes，当前 GitHub Release workflow 固定已验证的发行构建环境：
 
 ```text
-Node       22.23.2
-pnpm       11.7.0
-TypeScript 6.0.3
-esbuild    0.28.2
-gzip       level 9, MTIME=0, no optional fields, OS=255
+Node                 22.23.2
+pnpm                 11.7.0
+TypeScript           6.0.3
+esbuild              0.28.2
+@deepseek-ai/cordis  4.0.2 (build/mount verification only)
+gzip                 level 9, MTIME=0, no optional fields, OS=255
 ```
 
-这只是 canonical release bytes 的构建环境约束。最终 Protocol runtime compatibility 由 `cordis-js-esm` ABI 定义；Node/Host 消费的是已经生成并验证的 executable bytes，而不是复现 build environment。
+Cordis 版本只约束当前 build/release smoke 的 Host 验证环境，不进入 Protocol descriptor，也不会被 bundle 到 Protocol artifact。最终 Protocol runtime compatibility 由 `cordis-js-esm` ABI 定义；Node/Host 消费的是已经生成并验证的 executable bytes，而不是复现 build environment。
 
 ## GitHub Release workflow
 
