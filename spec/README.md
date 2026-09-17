@@ -32,11 +32,11 @@ LabourChain 的 **Protocol** 是链上稳定、版本化的语义与 identity；
 
 - [`core-protocol.md`](core-protocol.md) — 单 artifact Protocol data、ArtifactHash / ProtocolHash、strict chain-data validation、embedded/external artifact verification；
 - [`core-runtime-abi.md`](core-runtime-abi.md) — 当前 `js-esm` ABI v1、single gzip executable artifact、1 MiB bounded gunzip 与 Core artifact build profile；
-- [`release.md`](release.md) — GitHub Release-only 发行资产、tag/version gate、release build pin 与 npm 延后边界；
+- [`release.md`](release.md) — GitHub Release-only 发行资产、tag/version gate、release build pin、identity regression gate 与 npm 延后边界；
 - [`core-record.md`](core-record.md) — ordinary Record primitive：JCS RecordId、Protocol 来源、EntityPublicKey 作者确认与 signature verification；
 - [`core-entity.md`](core-entity.md) — Entity identity data 与共享 EntityPublicKey primitive；
 - [`core-block.md`](core-block.md) — ordinary Block confirmation primitives：recordsRoot、BlockId、packer confirmation 与 `verifyBlock`；
-- [`genesis.md`](genesis.md) — `Genesis = Block` baseline；MVP Core Protocol Records 携带 embedded artifact；
+- [`genesis.md`](genesis.md) — `Genesis = Block`，复用 ordinary Record/Block identity/signature，MVP Core Protocol Records 携带 embedded artifact；
 - [`ordering.md`](ordering.md) — Block confirmation、业务关系和 runtime arrival order 分离。
 
 ## Protocol artifact contract
@@ -94,9 +94,9 @@ uncompressed js-esm runtime > 1 MiB
 
 ## Release contract
 
-当前 `package.json.version` 是四个 Core Protocol 的统一 release version。构建输出每个 Protocol 的 versioned descriptor JSON 与 raw `.js-esm.gz`，并生成 `manifest.json`；`pnpm check` 必须从磁盘重新验证这些 release assets。
+当前 `package.json.version` 是四个 Core Protocol 的统一 release version。构建输出每个 Protocol 的 versioned descriptor JSON 与 raw `.js-esm.gz`，并生成 `manifest.json`；`pnpm check` 必须从磁盘重新验证 exact nine-file release set、canonical filenames、descriptor/manifest/actual diagnostics 与 frozen Core ProtocolHash fixtures。
 
-GitHub Release 仅作为分发渠道。tag 必须使用 `vMAJOR.MINOR.PATCH` 并与 generated manifest version 一致；Release job 固定当前 canonical build toolchain，创建 draft、上传完整资产后才发布。npm publishing 当前禁止。
+GitHub Release 仅作为分发渠道。tag 必须使用 `vMAJOR.MINOR.PATCH` 并与 generated manifest version 一致；Release job 固定当前 canonical build toolchain，先验证 tag commit 属于 `main`，再安装项目依赖，创建 draft、上传完整资产后才发布。npm publishing 当前禁止。
 
 ## Record contract
 
@@ -128,6 +128,18 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 ```
 
 因此同一 Block 禁止 duplicate RecordId。
+
+## Genesis contract
+
+Genesis 复用普通 Core primitive：
+
+```text
+Genesis = ordinary Block
+Genesis.records[] = ordinary Record[]
+previousBlock = "0"
+```
+
+初始 Core Protocol Records 使用 ordinary RecordId / EntityPublicKey / author signature；Genesis Header 使用 ordinary RecordsRoot / BlockId / packer signature。#10 剩余工作只收敛 deterministic assembly input/output 与是否需要 fixture/helper。
 
 ## Artifact / Asset boundary
 
@@ -167,12 +179,12 @@ sandbox/capability policy
 observability
 ```
 
-当前 ABI 只冻结已经实现的 artifact/load boundary；Protocol implementation 与 Cordis Plugin contract、`dependencies[]` 与 Cordis `inject` 的最终关系必须在后续 review 中显式确定。
+当前 ABI 只冻结已经实现的 artifact/load boundary；Protocol implementation 与 Cordis Plugin contract、`dependencies[]` 与 Cordis `inject` 的最终关系由 #31 在 v0.1.0 前显式审查。
 
 ## Deferred work
 
 - #22 的 single-artifact identity/runtime-verification 基础已完成，#29 恢复其 Protocol 命名；
 - #23 Protocol Dev SDK 延后到 Core/Repo package boundaries 完成后；
 - #24 GitHub Release-only release/distribution flow 已收敛；
-- Protocol/Cordis runtime alignment 在 v0.1.0 前继续审查；
-- #10 finalizes Genesis after Protocol identities are stable.
+- #31 reviews Protocol/Cordis runtime alignment before v0.1.0;
+- #10 finalizes only deterministic Genesis assembly/fixture details on top of ordinary Core primitives.
