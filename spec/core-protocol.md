@@ -1,6 +1,6 @@
 # `core.protocol` Specification
 
-Status: defined for single-artifact executable Protocol identity and runtime verification.
+Status: defined for single-artifact executable Protocol identity and exact artifact verification. Cordis-aware module/dependency validation is deliberately outside `core.protocol`.
 
 ## Source
 
@@ -11,11 +11,11 @@ Historical source facts remain in `docs/source-baseline.md`. Current design sour
 - `docs/runtime-abi.md`
 - `docs/genesis.md`
 
-`Protocol` is the LabourChain chain-facing stable semantic/identity term. `Plugin` is reserved for the Cordis runtime abstraction. Restoring Protocol terminology does not restore the historical schema-only Protocol runtime.
+`Protocol` is the LabourChain chain-facing stable semantic/identity term. `Plugin` is reserved for the Cordis runtime abstraction.
 
 ## Responsibility
 
-`core.protocol` defines the Protocol data carried by `Record.data`, deterministic Protocol identity, exact executable artifact identity, and artifact verification primitives.
+`core.protocol` defines the Protocol data carried by `Record.data`, deterministic Protocol identity, exact executable artifact identity, and exact artifact verification primitives.
 
 Out of scope:
 
@@ -30,9 +30,12 @@ Asset implementation
 source/build provenance
 Record/Block ordering rules
 Cordis Plugin lifecycle / Context / Service / Fiber policy
+ESM import / plugin shape validation
+Protocol.dependencies[] -> plugin.inject projection validation
+runtime dependency availability / resolution
 ```
 
-A Protocol implementation may later be mounted as a Cordis Plugin; `core.protocol` must not establish a second plugin lifecycle or composition system.
+A Protocol implementation executes as a Cordis Plugin, but `core.protocol` MUST NOT establish a second plugin lifecycle, dependency manager, or composition system.
 
 ## Public data model
 
@@ -41,7 +44,7 @@ export type ArtifactHash = string
 export type ProtocolHash = string
 
 export interface ProtocolRuntime {
-  kind: 'js-esm'
+  kind: 'cordis-js-esm'
   abi: number
 }
 
@@ -63,7 +66,7 @@ export interface Protocol {
 
 `artifact` is optional canonical RFC 4648 Base64 of the exact gzip executable bytes. It is storage only and is excluded from ProtocolHash.
 
-No `schema`, `runtime.entry`, `files[]`, multi-file artifact map, or FileHash path/manifest model remains in the current Protocol type.
+No `schema`, `runtime.entry`, `files[]`, multi-file artifact map, or FileHash path/manifest model is part of the current Protocol type.
 
 ## Structural trust boundary
 
@@ -88,19 +91,19 @@ Protocol/dependency versions MUST be exact SemVer 2.0.0 values. Ranges, tags, wo
 ## Runtime descriptor
 
 ```text
-runtime.kind = "js-esm"
+runtime.kind = "cordis-js-esm"
 runtime.abi = positive safe integer
 ```
 
-Current ABI v1 consumes exactly one verified gzip artifact. There is no entry path because there is no multi-file runtime artifact.
+ABI v1 consumes exactly one verified gzip executable artifact. There is no entry path because there is no multi-file runtime artifact.
 
-A validator MAY accept future positive ABI numbers as structurally valid Protocol data; the runtime/composition layer is responsible for rejecting unsupported ABI values before execution.
+A validator MAY accept future positive ABI numbers as structurally valid Protocol data; the runtime/Host layer is responsible for rejecting unsupported ABI values before execution.
 
-This spec freezes only the currently implemented artifact/runtime descriptor. Import-to-Cordis-Plugin mounting semantics are intentionally not invented here; they require the later runtime alignment review.
+`core.protocol` validates the runtime descriptor as identity data only. It does not import the module or decide whether the artifact is a valid Cordis Plugin; those requirements are specified in `core-runtime-abi.md` and enforced by SDK/build and Node/load boundaries.
 
 ## Dependencies
 
-Each current chain-level dependency contains exactly:
+Each chain-level dependency contains exactly:
 
 ```text
 name
@@ -108,13 +111,21 @@ version
 protocolHash
 ```
 
-`protocolHash` MUST be a 64-character lowercase hexadecimal DoubleSHA256 digest and is the authoritative identity.
+`protocolHash` MUST be a 64-character lowercase hexadecimal DoubleSHA256 digest and is the authoritative exact dependency identity.
 
 Dependency names MUST be unique within one Protocol. `dependencies[]` is semantically set-like; validation returns a copy sorted by dependency `name` using UTF-8 byte order before ProtocolHash serialization.
 
 Ordinary npm/pnpm/build dependencies are not Protocol dependencies. Build tooling SHOULD bundle normal source dependencies unless they intentionally remain independently resolved chain Protocols.
 
-The semantic boundary between this field and Cordis runtime `inject` is not finalized by this terminology refactor. Do not derive a second Cordis dependency manager from `dependencies[]`.
+For `cordis-js-esm` ABI v1, every Protocol dependency is projected by SDK/build and Node/load validation to the required Cordis service key:
+
+```text
+protocol:<name>@<version>
+```
+
+That projection MUST NOT be validated by `core.protocol`: doing so would require importing/understanding Cordis Plugin metadata and would move runtime composition into the deterministic chain primitive.
+
+Initial `core.protocol`, `core.entity`, `core.record`, and `core.block` artifacts use `dependencies = []`; their source-level imports are bundled into each single executable artifact.
 
 ## ArtifactHash
 
@@ -122,11 +133,11 @@ The semantic boundary between this field and Cordis runtime `inject` is not fina
 ArtifactHash = DoubleSHA256(exact artifact bytes)
 ```
 
-For `js-esm` ABI v1, the exact artifact bytes are the gzip-compressed ESM bundle bytes that are published, embedded, mirrored, cached, and downloaded.
+For `cordis-js-esm` ABI v1, the exact artifact bytes are the gzip-compressed ESM Plugin bundle bytes that are published, embedded, mirrored, cached, and downloaded.
 
 `ArtifactHash` MUST be serialized as 64-character lowercase hexadecimal.
 
-Compression metadata is therefore part of exact artifact bytes. Current Core build tooling normalizes gzip metadata, but reproducible construction belongs to Protocol Dev SDK #23, not to `core.protocol` runtime verification.
+Compression metadata is part of exact artifact bytes. Current Core build tooling normalizes gzip metadata, but reproducible construction belongs to Protocol Dev SDK #23, not to `core.protocol` runtime verification.
 
 ## Embedded artifact
 
@@ -137,7 +148,7 @@ Compression metadata is therefore part of exact artifact bytes. Current Core bui
 3. decode + re-encode MUST reproduce the exact input string;
 4. `artifactHash(decodedBytes)` MUST equal `Protocol.artifactHash`.
 
-Embedding does not change ProtocolHash. The same exact gzip bytes may be embedded in Record data, resolved from cache, mirror, registry, or other distribution channel and still identify the same Protocol.
+Embedding does not change ProtocolHash. The same exact gzip bytes may be embedded in Record data or resolved from cache/release/mirror and still identify the same Protocol.
 
 ## ProtocolHash
 
@@ -172,9 +183,9 @@ verifyArtifact(protocol, artifactBytes, expectedProtocolHash?)
 verifyEmbeddedArtifact(protocol, expectedProtocolHash?)
 ```
 
-Low-level JCS serialization, identity-construction helpers, build manifest helpers, and package construction helpers MUST NOT be public runtime API.
+Low-level JCS serialization, identity-construction helpers, build manifest helpers, Cordis Plugin validators, dependency-projection helpers, and package construction helpers MUST NOT be public `core.protocol` API.
 
-`artifactHash()` remains public because exact artifact hashing is itself a verification primitive and may be reused by Protocol Dev SDK #23 without duplicating the protocol algorithm.
+`artifactHash()` remains public because exact artifact hashing is itself a verification primitive and may be reused by Protocol Dev SDK #23 without duplicating the protocol hash algorithm.
 
 ## Verification semantics
 
@@ -184,6 +195,8 @@ Low-level JCS serialization, identity-construction helpers, build manifest helpe
 - validate name/version/runtime/dependencies/digests;
 - normalize dependency ordering in its returned value;
 - when `artifact` exists, validate canonical Base64 and ArtifactHash.
+
+It MUST NOT import `artifact`, inspect `plugin`, inspect `plugin.inject`, resolve dependency Protocols, or validate dependency projection.
 
 `protocolHash(protocol)` MUST validate the Protocol and return the canonical ProtocolHash.
 
@@ -204,17 +217,17 @@ Low-level JCS serialization, identity-construction helpers, build manifest helpe
 4. optionally compare expected ProtocolHash;
 5. return the calculated ProtocolHash.
 
-Malformed data MUST throw `ProtocolError`. There is no boolean soft-failure path for malformed identity/artifact data.
+Malformed identity/artifact data MUST throw `ProtocolError`. There is no boolean soft-failure path.
 
 ## Runtime artifact size
 
 `core.protocol` MUST NOT reject an artifact merely because compressed bytes exceed an engineering threshold. The approximately 500 KiB compressed-size warning belongs to Dev SDK/build tooling.
 
-`js-esm` ABI v1's 1 MiB decompressed runtime hard limit belongs to runtime loading and is defined in `core-runtime-abi.md`; it is not an `artifactHash()` or Protocol descriptor-size rule.
+`cordis-js-esm` ABI v1's 1 MiB decompressed runtime hard limit belongs to runtime loading and is defined in `core-runtime-abi.md`; it is not an `artifactHash()` or Protocol descriptor-size rule.
 
 ## Distribution and metadata boundary
 
-Human description, release notes, source URLs, package-manager metadata, registry/discovery metadata, build inputs, reproducible-build provenance, Cordis Fiber state, and current loaded/unloaded state MUST NOT be added to Protocol identity merely because they accompany a release/runtime instance.
+Human description, release notes, source URLs, package-manager metadata, registry/discovery metadata, build inputs, reproducible-build provenance, Cordis Fiber state, `plugin.inject`, and current loaded/unloaded state MUST NOT be added to Protocol identity merely because they accompany a release/runtime instance.
 
 Protocol Dev SDK is #23. Release/distribution channels are #24.
 
@@ -222,4 +235,4 @@ Protocol Dev SDK is #23. Release/distribution channels are #24.
 
 Initial Core Protocols may carry embedded gzip artifacts so Genesis/bootstrap does not require an external registry. `core.protocol` defines no Genesis-specific validity path; Genesis #10 composes ordinary Protocol/Record/Block primitives.
 
-ProtocolHash fixtures MUST be regenerated intentionally when this pre-v0.1.0 terminology change alters Protocol identity or artifact bytes.
+ProtocolHash fixtures MUST be regenerated intentionally when the pre-v0.1.0 `cordis-js-esm` migration changes runtime descriptor or artifact bytes.
