@@ -1,6 +1,6 @@
 # Core Release Specification
 
-Status: target contract for GitHub Release-only Core distribution after the pre-v0.1.0 `cordis-js-esm` migration.
+Status: implemented GitHub Release-only Core distribution contract for the current `cordis-js-esm` ABI.
 
 ## Version source
 
@@ -107,16 +107,30 @@ After build, verification MUST read the emitted files from disk and, for every P
 6. call `verifyEmbeddedArtifact(protocol, protocolHash)`;
 7. require decoded embedded artifact bytes to equal the raw gzip file exactly;
 8. bounded-gunzip the raw artifact using ABI v1 limits;
-9. import the decompressed ESM from a temporary materialized path;
+9. import the decompressed repository-owned Core ESM from a temporary materialized path;
 10. require the namespace to expose exactly `plugin`;
-11. validate canonical `plugin.name`, `plugin.provide`, callable `plugin.apply`, valid Cordis Inject form, and `Protocol.dependencies[] -> plugin.inject` projection;
-12. smoke-mount the plugin through the Host Cordis runtime and verify the canonical Protocol service is provided, then dispose cleanly;
-13. require manifest diagnostics, descriptor diagnostics, and actual runtime/artifact/Base64 sizes to be identical;
-14. compare each Core ProtocolHash with the frozen v0.1 candidate identity fixture.
+11. validate canonical `plugin.name`, `plugin.provide`, callable `plugin.apply`, valid Cordis Inject form, and exact `protocol:*` dependency projection;
+12. smoke-mount the plugin through the Host Cordis runtime and verify the canonical Protocol service is provided;
+13. dispose that Plugin Fiber and verify the canonical Protocol service is no longer available;
+14. dispose the root test Context cleanly;
+15. require manifest diagnostics, descriptor diagnostics, and actual runtime/artifact/Base64 sizes to be identical;
+16. compare each Core ProtocolHash with the frozen v0.1 candidate identity fixture.
 
-Steps 9-12 are release/build validation, not `core.protocol` behavior. `core.protocol` itself MUST remain unaware of ESM exports, Cordis metadata, `plugin.inject`, and dependency projection.
+Steps 9-14 are release/build validation, not `core.protocol` behavior. `core.protocol` itself MUST remain unaware of ESM exports, Cordis metadata, `plugin.inject`, dependency projection, sandboxing, and lifecycle validation.
 
-Because `artifactHash` participates in ProtocolHash, the frozen ProtocolHash fixture also detects any executable artifact-byte change. The `js-esm -> cordis-js-esm` migration intentionally changes runtime descriptors and executable bytes, so the fixture MUST be regenerated explicitly in the reviewed implementation change rather than silently accepting generated output.
+For the reserved `protocol:` service namespace, release/build validation MUST require:
+
+```text
+all protocol:* names in plugin.inject
+==
+project(Protocol.dependencies[])
+```
+
+Non-Protocol runtime services MAY be injected additionally without becoming structured `ProtocolDependency` entries. Because inject metadata is part of executable bytes, it contributes to executable identity through `artifactHash`.
+
+The Core release verifier directly imports only repository-owned Core fixtures. Repo Node handling arbitrary external Protocol artifacts MUST establish its sandbox/capability execution boundary before ESM top-level code is evaluated. Exact artifact verification proves identity, not execution safety.
+
+Because `artifactHash` participates in ProtocolHash, the frozen ProtocolHash fixture detects executable artifact-byte changes. Intentional executable changes require an explicit reviewed fixture update.
 
 This verification MUST be part of `pnpm check`.
 
