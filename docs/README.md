@@ -114,11 +114,11 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 ### [`runtime-abi.md`](runtime-abi.md)
 
-定义当前 `js-esm` ABI v1、gzip executable artifact、1 MiB bounded gunzip 与 Core build/runtime boundary。Protocol implementation 与 Cordis Plugin runtime 的进一步对齐另行审查。
+定义当前 `js-esm` ABI v1、gzip executable artifact、1 MiB bounded gunzip 与 Core build/runtime boundary。Protocol implementation 与 Cordis Plugin runtime 的进一步对齐由 #31 单独审查。
 
 ### [`release.md`](release.md)
 
-定义当前 GitHub Release-only 发行流程、release assets、tag/version 规则、固定发行构建环境与 npm 延后边界。
+定义当前 GitHub Release-only 发行流程、release assets、tag/version 规则、固定发行构建环境、identity regression gate 与 npm 延后边界。
 
 ### [`record.md`](record.md)
 
@@ -130,7 +130,7 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 ### [`genesis.md`](genesis.md)
 
-保留 `Genesis = Block`、`Protocol = Record.data`，并规定 MVP Core Protocol Records 携带完整 embedded artifact。
+规定 `Genesis = Block`、`Protocol = Record.data`，复用 ordinary Record/Block identity/signature，并要求 MVP Core Protocol Records 携带完整 embedded artifact。
 
 ### [`ordering.md`](ordering.md)
 
@@ -149,5 +149,5 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 - `js-esm` ABI v1 / bounded gzip artifact packaging 已实现；
 - Protocol Dev SDK 由 #23 延后到 Core/Repo 边界完成后；
 - GitHub Release-only release/distribution 由 #24 收敛；
-- Protocol/Cordis runtime contract 将在 terminology 恢复后继续审查；
-- Genesis bootstrap 由 #10 在 Protocol identity 冻结后继续审查。
+- Protocol/Cordis runtime contract 由 #31 在 v0.1.0 前独立审查；
+- Genesis #10 只继续收敛 deterministic assembly/fixture，不重新打开 ordinary Record/Block identity rules。

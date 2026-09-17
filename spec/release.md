@@ -30,6 +30,8 @@ File naming MUST be:
 
 It MUST also emit `manifest.json`.
 
+The output directory MUST contain exactly those nine files. Missing files, additional files, or manifest-selected alternate filenames MUST fail release verification.
+
 The raw `.js-esm.gz` bytes MUST be the same exact bytes represented by canonical Base64 in the corresponding `Protocol.artifact`.
 
 Adding release files MUST NOT alter the executable bundle bytes or ProtocolHash relative to the accepted build profile.
@@ -90,13 +92,18 @@ The manifest MUST NOT become ProtocolHash input or chain-validity state.
 
 After build, verification MUST read the emitted files from disk and, for every Protocol:
 
-1. confirm manifest and descriptor name/version agree;
-2. confirm manifest ProtocolHash/ArtifactHash agree with descriptor values;
-3. call `verifyArtifact(protocol, rawGzipBytes, protocolHash)`;
-4. call `verifyEmbeddedArtifact(protocol, protocolHash)`;
-5. require decoded embedded artifact bytes to equal the raw `.gz` file exactly;
-6. bounded-gunzip the raw artifact using ABI v1 limits;
-7. confirm runtime/artifact/Base64 sizes equal the recorded diagnostics.
+1. require the exact nine-file output set;
+2. require canonical `<protocol>-<version>.json` and `<protocol>-<version>.js-esm.gz` filenames rather than trusting arbitrary manifest paths;
+3. confirm manifest and descriptor name/version agree;
+4. confirm manifest ProtocolHash/ArtifactHash agree with descriptor values;
+5. call `verifyArtifact(protocol, rawGzipBytes, protocolHash)`;
+6. call `verifyEmbeddedArtifact(protocol, protocolHash)`;
+7. require decoded embedded artifact bytes to equal the raw `.gz` file exactly;
+8. bounded-gunzip the raw artifact using ABI v1 limits;
+9. require manifest diagnostics, descriptor diagnostics, and actual runtime/artifact/Base64 sizes to be identical;
+10. compare each Core ProtocolHash with the frozen pre-v0.1 release identity fixture.
+
+Because `artifactHash` participates in ProtocolHash, the frozen ProtocolHash fixture also detects any executable artifact-byte change. An intentional executable identity change MUST update the fixture explicitly in the reviewed change; generated output MUST NOT silently become its own acceptance baseline.
 
 This verification MUST be part of `pnpm check`.
 
@@ -132,6 +139,8 @@ GITHUB_SHA is in main history
 tag == v${generated manifest.version}
 full pnpm check passes
 ```
+
+The workflow MAY use a setup action to install the pinned pnpm/runtime tooling, but that step MUST NOT install project dependencies before the `main` ancestry gate. Project dependencies MUST be installed explicitly once after that gate.
 
 The workflow MUST create a draft GitHub Release with all files under `dist/core-artifacts/`, then publish the Release only after asset upload succeeds.
 

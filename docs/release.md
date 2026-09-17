@@ -25,11 +25,11 @@ vMAJOR.MINOR.PATCH
 
 tag 版本必须与 `package.json.version` 以及生成的四个 Protocol descriptor version 一致。
 
-`package.json` 只是当前 Core release version 的单一源码；package 标记为 `private`，本流程不执行 npm publish。
+`package.json` 是当前 Core release version 的单一源码；package 标记为 `private`，本流程不执行 npm publish。
 
 ## Release assets
 
-`pnpm build:artifacts` 生成：
+`pnpm build:artifacts` 生成且只生成：
 
 ```text
 dist/core-artifacts/
@@ -58,15 +58,20 @@ GitHub 自动生成的 source archive 只属于源码分发；`docs/`、`spec/`�
 
 ```text
 manifest.json
+-> require the exact expected nine-file asset set
+-> require canonical versioned descriptor/artifact filenames
 -> read descriptor .json
 -> read raw .js-esm.gz
 -> verify ArtifactHash / ProtocolHash through core.protocol
 -> compare embedded Base64 bytes with raw gzip bytes
 -> bounded gunzip
--> verify recorded sizes
+-> verify manifest diagnostics == descriptor diagnostics == actual sizes
+-> verify frozen pre-v0.1 Core ProtocolHash fixtures
 ```
 
-`pnpm check` 包含这一步，因此普通 PR CI 也会保护 release asset contract。
+当前四个 Core ProtocolHash 在首个 `v0.1.0` 发布前作为 release regression fixture 固定。由于 ProtocolHash 承诺 `artifactHash`，任何 executable artifact byte 变化也会使该门禁失败。若后续确实需要改变 Core executable identity，必须在审查对应实现/构建变化后显式更新 fixture，而不能由自洽的 build 输出自动覆盖。
+
+`pnpm check` 包含这一步，因此普通 PR CI 也保护 release asset contract。
 
 ## Build environment
 
@@ -80,7 +85,7 @@ esbuild    0.28.2
 gzip       level 9, MTIME=0, no optional fields, OS=255
 ```
 
-这只是 canonical release bytes 的构建环境约束。Protocol runtime compatibility 当前仍然是 Node 22-compatible `js-esm` ABI v1；其 Cordis Plugin runtime contract 后续独立审查。
+这只是 canonical release bytes 的构建环境约束。Protocol runtime compatibility 当前仍然是 Node 22-compatible `js-esm` ABI v1；其 Cordis Plugin runtime contract 由 #31 独立审查。
 
 ## GitHub Release workflow
 
@@ -88,8 +93,10 @@ gzip       level 9, MTIME=0, no optional fields, OS=255
 
 ```text
 checkout exact tag
+-> install pinned pnpm/runtime tooling without installing project dependencies
 -> confirm tagged commit belongs to main history
--> install pinned release toolchain
+-> install project dependencies exactly once
+-> verify pinned release toolchain
 -> pnpm check
 -> verify tag == generated manifest version
 -> create draft GitHub Release
@@ -97,7 +104,7 @@ checkout exact tag
 -> publish Release
 ```
 
-先创建 draft、上传完整资产后再发布，避免用户看到缺少部分文件的正式 Release。
+先验证 tag commit 属于 `main`，再执行项目 dependency install。先创建 draft、上传完整资产后再发布，避免用户看到缺少部分文件的正式 Release。
 
 Release workflow 不包含 npm token、npm registry 配置或 `npm/pnpm publish`。
 
@@ -107,9 +114,10 @@ Release workflow 不包含 npm token、npm registry 配置或 `npm/pnpm publish`
 
 1. 先在普通 PR 中修改 `package.json.version` 与必要代码/docs；
 2. `pnpm check` 必须通过，并审查 ProtocolHash 变化是否与变更相符；
-3. PR 合并到 `main`；
-4. 在目标 `main` commit 上创建相同版本 tag，例如 `v0.2.0`；
-5. push tag，由 Release workflow 自动发布。
+3. 如果 executable identity 有意变化，显式更新对应 frozen Core ProtocolHash fixture；
+4. PR 合并到 `main`；
+5. 在目标 `main` commit 上创建相同版本 tag，例如 `v0.2.0`；
+6. push tag，由 Release workflow 自动发布。
 
 不要为已经发布的同一 version/tag 重新生成不同 artifact bytes。任何会改变 executable artifact 的修改都应使用新的 Protocol/release version。
 
