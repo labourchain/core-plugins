@@ -40,7 +40,11 @@ Plugin.artifact? = { canonicalPath: canonicalBase64Bytes }
 
 小型、必要的 Plugin 优先把完整 artifact 随 Record 上链。MVP Genesis 中解释链所需的 Core Plugins 应自包含 executable artifact，使节点不依赖独立 Plugin registry 即可启动。
 
+当前 `js-esm` ABI v1 将实际发布/上链的 executable 定义为单文件 gzip ESM bundle；Base64 只是当前 JSON wire encoding。详细 packaging 见 [`runtime-abi.md`](runtime-abi.md)。构建、bundle、压缩、发布描述生成和体积分析属于后续 Plugin Dev SDK 职责，不属于 `core.plugin` runtime 验证职责。
+
 大型模型、图片、数据集、地图、词典、资源包等静态内容应优先拆为更高层 Asset/Runtime 资源。构建工具应在 executable artifact 大约超过 500 KiB 时给 warning；该阈值不属于 Core validity。
+
+`docs/`、`spec/`、tests 与历史材料是仓库开发/审查内容，不进入 runtime package 或链上 Plugin artifact。
 
 ## 当前 Record 原则
 
@@ -59,7 +63,7 @@ RecordId = DoubleSHA256(JCS(RawRecord))
 
 RawRecord 包含 `plugin / pluginHash / createdBy / createdAt / data`。RecordId 承诺完整 `data`，普通 Record signature 使用 domain-separated Ed25519 signature over RecordId。
 
-`core.record` 不 resolve 或执行 Plugin。runtime/composition 根据 `pluginHash` 加载 exact Plugin，并由具体 Plugin 执行协议规则。
+`core.record` 不 resolve 或执行 Plugin。runtime/composition 根据 `pluginHash` 加载 exact Plugin，再由该 Plugin 判断自身协议是否允许产生/接受该 Record。
 
 ## 当前 Entity 原则
 
@@ -110,6 +114,10 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 定义 `core.plugin` 当前模型：runtime / schema / exact dependencies / files、FileHash / PluginHash / JCS、optional embedded artifact、artifact verification、bundle-size guidance 与 Asset boundary。
 
+### [`runtime-abi.md`](runtime-abi.md)
+
+定义 Core Plugin `js-esm` ABI v1、gzip executable bundle 与 deterministic packaging 边界。
+
 ### [`record.md`](record.md)
 
 定义 `core.record` 当前模型：RawRecord / Record、协议来源/主体来源、JCS RecordId、完整 `data`、EntityPublicKey `createdBy`、domain-separated signature 与 runtime boundary。
@@ -136,4 +144,6 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 - `core.record` 已实现；
 - `core.entity` 已实现；
 - ordinary `core.block` confirmation primitives 已实现；
+- Core Plugin runtime ABI v1 / gzip artifact packaging 由 #20 实现；
+- `core.plugin` runtime / Plugin Dev SDK 职责拆分由 #22 后续 review；
 - Genesis bootstrap 例外仍待独立 review。

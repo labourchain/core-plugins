@@ -6,6 +6,7 @@
     "declaration": true,
     "outDir": "lib",
     "rootDir": "src",
+    "newLine": "lf",
     "strict": true,
     "skipLibCheck": true,
     "types": ["node"]
