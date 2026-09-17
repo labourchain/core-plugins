@@ -1,4 +1,4 @@
-# Block Plugin
+# Block Protocol
 
 本文记录 `core.block` 已完成审查的 ordinary Block 确证合同。Genesis bootstrap Record 特例仍由独立 Genesis review 决定。
 
@@ -51,7 +51,7 @@ packer
 signature
 ```
 
-`BlockHeader` 是 `core.block` 的公开类型，不存在独立 `core.block-header` Plugin。
+`BlockHeader` 是 `core.block` 的公开类型，不存在独立 `core.block-header` Protocol。
 
 ## Records root
 
@@ -131,24 +131,24 @@ Genesis -> Block -> Block -> ...
 
 同一个 Block 内的 Records 可以存在真实领域依赖，例如一个劳动 Record 使用另一个劳动 Record 的产出。Core 不从 Record 数组位置推导或验证 Labour / Asset / Project 的业务拓扑。
 
-领域 tracing、输入输出一致性与因果规则由相应 Plugin 负责。
+领域 tracing、输入输出一致性与因果规则由相应 Protocol 负责；其运行时实现可以由 Cordis Plugin 承载。
 
-## Plugin availability
+## Protocol availability
 
-正常 composition 应让 Plugin 在依赖它产生 Record 之前已经可取得、验证和运行，因此不推荐 Plugin 的首次发布 Record 与依赖它的普通 Record 首次出现在同一个 Block。
+正常 composition 应让 Protocol implementation 在依赖它产生 Record 之前已经可取得、验证和运行，因此不推荐 Protocol 的首次发布 Record 与依赖它的普通 Record 首次出现在同一个 Block。
 
 这不是 Block validity rule。`core.block` 不维护：
 
 ```text
-activePluginState / nextPluginState
+activeProtocolState / nextProtocolState
 N -> N+1 activation
-pre-Block Plugin snapshot
-same-Block Plugin activation/inactivity
-Plugin Record 必须排在使用者之前
-Plugin dependency 按 Block 顺序解析
+pre-Block Protocol snapshot
+same-Block Protocol activation/inactivity
+Protocol Record 必须排在使用者之前
+Protocol dependency 按 Block 顺序解析
 ```
 
-runtime/composition 根据 `pluginHash` 获取 exact Plugin。
+runtime/composition 根据 `protocolHash` 获取 exact Protocol implementation。
 
 ## `verifyBlock` boundary
 
@@ -164,7 +164,7 @@ Block / Header representation
 -> packer signature
 ```
 
-它不验证 Plugin 执行、业务 DAG、Entity 注册状态、PoA 授权、canonical-chain selection、网络同步、存储或 `previousBlock` 是否等于某个本地 chain head；最后一项需要外部链上下文。
+它不验证 Protocol 执行、业务 DAG、Entity 注册状态、PoA 授权、canonical-chain selection、网络同步、存储或 `previousBlock` 是否等于某个本地 chain head；最后一项需要外部链上下文。
 
 ## Minimal API
 
@@ -182,8 +182,8 @@ Block 侧使用 `blockSigningPayload`，避免与根导出中已有的 Record `s
 
 ## Genesis boundary
 
-Genesis 继续是一个 Block，初始 Core Plugins 通过 `Record.data = Plugin` 进入 `records[]`。
+Genesis 继续是一个 Block，初始 Core Protocols 通过 `Record.data = Protocol` 进入 `records[]`。
 
-独立 `GenesisManifest`、`GenesisId`、S0 Plugin artifact set 不再作为前提。
+独立 `GenesisManifest`、`GenesisId`、S0 Protocol artifact set 不再作为前提。
 
-历史 bootstrap RecordId、`createdBy = "Root"`、unsigned Record、Root Member/Repository 与 first-link sentinel 的最终保留范围由 #10 Genesis review 决定，不反向修改 ordinary `core.block` 的 Plugin/business 边界。
+历史 bootstrap RecordId、`createdBy = "Root"`、unsigned Record、Root Member/Repository 与 first-link sentinel 的最终保留范围由 #10 Genesis review 决定，不反向修改 ordinary `core.block` 的 Protocol/business 边界。
