@@ -5,6 +5,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { gzipSync } from 'node:zlib'
 import { build } from 'esbuild'
 import { artifactHash, verifyEmbeddedArtifact } from '../lib/protocol.js'
+import {
+  protocolServiceKey,
+  smokeMountCordisProtocol,
+  validateCordisProtocolModule,
+} from './cordis-protocol-runtime.mjs'
 import { assertRuntimeSize, gunzipRuntime } from './runtime-bundle.mjs'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -12,64 +17,49 @@ const OUT_DIR = join(ROOT, 'dist', 'core-artifacts')
 const PACKAGE = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'))
 const VERSION = PACKAGE.version
 const ABI = 1
+const RUNTIME_KIND = 'cordis-js-esm'
 const LARGE_ARTIFACT_BYTES = 500 * 1024
 
 const CORE_PROTOCOLS = [
-  {
-    name: 'core.protocol',
-    main: 'protocol.js',
-    exports: [
-      'ProtocolError',
-      'artifactHash',
-      'protocolHash',
-      'validateProtocol',
-      'verifyArtifact',
-      'verifyEmbeddedArtifact',
-    ],
-  },
-  {
-    name: 'core.entity',
-    main: 'entity.js',
-    exports: [
-      'EntityError',
-      'decodeBase58btc',
-      'encodeBase58btc',
-      'validateEntity',
-      'validateEntityPublicKey',
-    ],
-  },
-  {
-    name: 'core.record',
-    main: 'record.js',
-    exports: [
-      'RECORD_SIGNING_DOMAIN',
-      'RecordError',
-      'canonicalRecord',
-      'recordId',
-      'signingPayload',
-      'validateRawRecord',
-      'validateRecord',
-      'verifySignature',
-    ],
-  },
-  {
-    name: 'core.block',
-    main: 'block.js',
-    exports: [
-      'BLOCK_SIGNING_DOMAIN',
-      'BlockError',
-      'blockId',
-      'blockSigningPayload',
-      'recordsRoot',
-      'verifyBlock',
-      'verifyHeader',
-    ],
-  },
+  { name: 'core.protocol', main: 'protocol.js', dependencies: [] },
+  { name: 'core.entity', main: 'entity.js', dependencies: [] },
+  { name: 'core.record', main: 'record.js', dependencies: [] },
+  { name: 'core.block', main: 'block.js', dependencies: [] },
 ]
+
+function runtimeEntry(config) {
+  const protocol = {
+    name: config.name,
+    version: VERSION,
+    dependencies: config.dependencies,
+  }
+  const service = protocolServiceKey(protocol)
+  const inject = config.dependencies.map(
+    (dependency) => `protocol:${dependency.name}@${dependency.version}`,
+  )
+
+  return `
+import * as implementation from ${JSON.stringify(`./lib/${config.main}`)}
+
+export const plugin = {
+  name: ${JSON.stringify(`${config.name}@${VERSION}`)},
+  provide: ${JSON.stringify(service)},
+  inject: ${JSON.stringify(inject)},
+  apply(ctx) {
+    ctx.provide(${JSON.stringify(service)}, implementation)
+  },
+}
+`
+}
 
 async function buildRuntimeBundle(config) {
   const result = await build({
-    entryPoints: [join(ROOT, 'lib', config.main)],
+    stdin: {
+      contents: runtimeEntry(config),
+      resolveDir: ROOT,
+      sourcefile: `${config.name}.runtime.mjs`,
+      loader: 'js',
+    },
     bundle: true,
     platform: 'node',
     format: 'esm',
@@ -114,8 +104,8 @@ async function buildCoreProtocol(config) {
   const protocol = {
     name: config.name,
     version: VERSION,
-    runtime: { kind: 'js-esm', abi: ABI },
-    dependencies: [],
+    runtime: { kind: RUNTIME_KIND, abi: ABI },
+    dependencies: config.dependencies,
     artifactHash: artifactHash(artifactBytes),
     artifact,
   }
@@ -135,16 +125,14 @@ async function smokeLoad(config, built) {
     if (built.protocol.artifact === undefined) {
       throw new Error(`${config.name} artifact is missing`)
     }
+
     const runtimeBytes = gunzipRuntime(Buffer.from(built.protocol.artifact, 'base64'))
     const runtimePath = join(root, 'runtime.mjs')
     await writeFile(runtimePath, runtimeBytes)
 
     const namespace = await import(`${pathToFileURL(runtimePath).href}?${built.protocolHash}`)
-    for (const name of config.exports) {
-      if (!(name in namespace)) {
-        throw new Error(`${config.name} runtime is missing required export ${name}`)
-      }
-    }
+    const plugin = validateCordisProtocolModule(built.protocol, namespace)
+    await smokeMountCordisProtocol(built.protocol, plugin)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -165,7 +153,7 @@ async function main() {
     await smokeLoad(config, built)
 
     const descriptorFile = `${config.name}-${VERSION}.json`
-    const artifactFile = `${config.name}-${VERSION}.js-esm.gz`
+    const artifactFile = `${config.name}-${VERSION}.cordis-js-esm.gz`
     const descriptor = {
       protocolHash: built.protocolHash,
       protocol: built.protocol,
@@ -196,7 +184,7 @@ async function main() {
 
   const manifest = {
     version: VERSION,
-    runtime: { kind: 'js-esm', abi: ABI },
+    runtime: { kind: RUNTIME_KIND, abi: ABI },
     protocols,
   }
   await writeFile(join(OUT_DIR, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
