@@ -29,9 +29,9 @@ tag 版本必须与 `package.json.version` 以及生成的四个 Protocol descri
 
 `package.json` 是当前 Core release version 的单一源码；package 标记为 `private`，本流程不执行 npm publish。
 
-## Runtime artifact migration
+## Runtime artifact contract
 
-#31 已在 docs 层接受：
+#31 接受：
 
 ```text
 runtime.kind = "cordis-js-esm"
@@ -40,26 +40,32 @@ runtime.abi = 1
 
 最终 release artifact 解压后必须是 single-file ESM，并显式导出可直接交给 Host `ctx.plugin()` 的唯一 runtime entry `plugin`。
 
-当前 `main` 的 release builder 仍是 pre-#31 `js-esm` pure API artifact 实现。下面列出的 `.js-esm.gz` 文件名和 frozen ProtocolHash 都描述**当前实现状态**，不是已经冻结的 v0.1.0 最终 runtime identity。docs 审查完成后，spec/implementation/release naming 与 regression fixtures 必须一起迁移；v0.1.0 之前不保留旧 runtime compatibility path。
+最终 artifact filename 同步 runtime kind：
 
-## Current implementation release assets
+```text
+<protocol>-<version>.cordis-js-esm.gz
+```
 
-当前 `pnpm build:artifacts` 生成且只生成：
+文件名不参与 ProtocolHash，但属于冻结的 release contract。v0.1.0 前直接替换旧 `.js-esm.gz` 命名，不保留兼容副本。
+
+## Release assets
+
+`pnpm build:artifacts` 最终生成且只生成：
 
 ```text
 dist/core-artifacts/
 ├── core.protocol-<version>.json
-├── core.protocol-<version>.js-esm.gz
+├── core.protocol-<version>.cordis-js-esm.gz
 ├── core.entity-<version>.json
-├── core.entity-<version>.js-esm.gz
+├── core.entity-<version>.cordis-js-esm.gz
 ├── core.record-<version>.json
-├── core.record-<version>.js-esm.gz
+├── core.record-<version>.cordis-js-esm.gz
 ├── core.block-<version>.json
-├── core.block-<version>.js-esm.gz
+├── core.block-<version>.cordis-js-esm.gz
 └── manifest.json
 ```
 
-这些 `.js-esm.gz` 是当前 pre-#31 implementation 的 exact artifact bytes。#31 实现阶段可以为 `cordis-js-esm` 选择更明确的 artifact filename；文件名是 release metadata，不参与 ProtocolHash，但必须由 release spec 明确并由 verifier 固定。
+每个 `.cordis-js-esm.gz` 是对应 Protocol implementation 的 exact ready-to-mount artifact bytes，也是 GitHub Release 上 resolver 下载的外部 artifact。
 
 每个 `.json` 包含对应 Protocol descriptor、ProtocolHash、embedded canonical Base64 artifact 与 size diagnostics，便于 bootstrap、检查和人工审阅。
 
@@ -73,28 +79,28 @@ GitHub 自动生成的 source archive 只属于源码分发；`docs/`、`spec/`�
 
 ```text
 manifest.json
--> require exact expected asset set
+-> require exact expected nine-file asset set
 -> require canonical versioned descriptor/artifact filenames
 -> read descriptor
--> read raw gzip artifact
+-> read raw .cordis-js-esm.gz
 -> verify ArtifactHash / ProtocolHash through core.protocol
 -> compare embedded Base64 bytes with raw gzip bytes
 -> bounded gunzip
--> verify runtime ABI-specific executable contract
+-> import ESM
+-> require namespace exports exactly `plugin`
+-> validate Cordis Plugin runtime shape
+-> validate dependencies[] -> plugin.inject projection
 -> verify manifest diagnostics == descriptor diagnostics == actual sizes
 -> verify frozen Core ProtocolHash fixtures
 ```
 
-在 `cordis-js-esm` 迁移后，runtime ABI-specific verification 还必须包括：
+这里要区分验证所有权：
 
-```text
-import ESM
--> namespace exports exactly `plugin`
--> plugin satisfies accepted Cordis object Plugin shape
--> chain semantic dependencies project into plugin.inject
-```
+- `core.protocol` 只负责 descriptor、ProtocolHash、ArtifactHash 与 embedded artifact identity；
+- release/build gate 负责同时检查 descriptor 与 executable module，因此在这里验证 `dependencies[] -> plugin.inject` projection；
+- Repo Node 加载时必须再次做同样的 projection 检查。
 
-当前四个 pre-#31 Core ProtocolHash 作为现有 builder 的 regression fixture 固定。迁移到 `cordis-js-esm` 必然改变 artifact bytes、ArtifactHash 与 ProtocolHash，因此实现 #31 时必须显式更新 fixture，并在 diff 中解释 identity 变化来源。
+当前四个 pre-#31 Core ProtocolHash 只是旧 builder 的 regression fixture。迁移到 `cordis-js-esm` 必然改变 artifact bytes、ArtifactHash 与 ProtocolHash，因此实现 #31 时必须显式更新 fixture，并在 diff 中解释 identity 变化来源。
 
 `pnpm check` 包含 release asset verification，因此普通 PR CI 也保护 release contract。
 
@@ -151,9 +157,9 @@ Release workflow 不包含 npm token、npm registry 配置或 `npm/pnpm publish`
 当前渠道分工：
 
 ```text
-embedded Protocol.artifact -> Genesis / offline bootstrap
-GitHub Release .gz          -> 外部下载与镜像
-GitHub repository/archive   -> source / docs / history
+embedded Protocol.artifact              -> Genesis / offline bootstrap
+GitHub Release .cordis-js-esm.gz        -> 外部下载与镜像
+GitHub repository/archive               -> source / docs / history
 ```
 
 这些渠道只回答“从哪里得到 exact executable bytes”。它们不改变 artifact 已经完成构建、可直接进入 ABI loading pipeline 的事实。
