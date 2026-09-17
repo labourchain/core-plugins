@@ -21,3 +21,9 @@ import { recordsRoot, verifyBlock } from '@labourchain/core-plugins/block'
 ```
 
 这些 Core API 是确定性的 identity / validation / verification primitives。私钥管理与签名、Plugin resolution/loading、Repo/Member 规则、PoA 授权、持久化、网络、业务语义和运行时 lifecycle 都属于 Core 之外的层。
+
+## Release
+
+当前外部发行只使用 GitHub Releases，不发布 npm package。`vMAJOR.MINOR.PATCH` tag 触发完整检查后，Release 上传四个 Core Plugin 的 exact `.js-esm.gz` artifact、对应 descriptor JSON 与 `manifest.json`；下载方仍必须用 ArtifactHash / PluginHash 自验证。
+
+完整发行约束见 [`docs/release.md`](docs/release.md) 与 [`spec/release.md`](spec/release.md)。

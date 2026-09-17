@@ -1,6 +1,7 @@
 {
   "name": "@labourchain/core-plugins",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "private": true,
   "description": "Deterministic core chain plugins for LabourChain",
   "type": "module",
   "packageManager": "pnpm@11.7.0",
@@ -21,7 +22,8 @@
     "build:artifacts": "pnpm run build && node scripts/build-core-artifacts.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "check": "pnpm run typecheck && pnpm run test && pnpm run build:artifacts && node scripts/smoke-package-exports.mjs"
+    "verify:release": "node scripts/verify-release-artifacts.mjs",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build:artifacts && node scripts/smoke-package-exports.mjs && pnpm run verify:release"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",

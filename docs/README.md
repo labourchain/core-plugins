@@ -44,7 +44,7 @@ resolve exact artifact bytes
 
 1 MiB 是解压后 runtime hard limit，也是 Plugin 工程边界；超过该规模应优先拆 Plugin 或把非执行内容移入 Asset / Runtime。约 500 KiB compressed artifact 只属于 Dev SDK/build tooling warning，不是 Core validity。
 
-构建、bundle、gzip、reproducible build 和 release preparation 属于 Plugin Dev SDK #23；发布/发现渠道属于 #24。`core.plugin` runtime 不依赖这些能力。
+构建、bundle、gzip、reproducible build 属于 Plugin Dev SDK #23 的后续工作。当前 Core 发行先使用 GitHub Releases：raw gzip artifact 与 descriptor/manifest 作为 release assets，GitHub 只是分发渠道，不参与 Plugin validity。
 
 `docs/`、`spec/`、tests 与历史材料不进入 runtime package 或链上 Plugin artifact。
 
@@ -114,6 +114,10 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 定义 `js-esm` ABI v1、gzip executable artifact、1 MiB bounded gunzip 与 Core build/runtime boundary。
 
+### [`release.md`](release.md)
+
+定义当前 GitHub Release-only 发行流程、release assets、tag/version 规则、固定发行构建环境与 npm 延后边界。
+
 ### [`record.md`](record.md)
 
 定义 RawRecord / Record、JCS RecordId、EntityPublicKey `createdBy` 与 domain-separated signature。
@@ -141,6 +145,6 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 - `core.entity` 已实现；
 - ordinary `core.block` confirmation primitives 已实现；
 - `js-esm` ABI v1 / bounded gzip artifact packaging 已实现；
-- Plugin Dev SDK 由 #23 负责；
-- release/distribution channels 由 #24 负责；
+- Plugin Dev SDK 由 #23 延后到 Core/Repo 边界完成后；
+- GitHub Release-only release/distribution 由 #24 收敛；
 - Genesis bootstrap 由 #10 在 Plugin identity 冻结后继续审查。
