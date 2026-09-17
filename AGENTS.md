@@ -96,7 +96,7 @@ Keep Protocol semantics host-agnostic. Process startup, Cordis hosting, artifact
 
 Do not silently resolve these open boundaries while working on unrelated changes:
 
-- **Protocol/Cordis runtime alignment** — current `js-esm` packaging is implemented, but the final import-to-Cordis-Plugin contract and the relationship between Protocol dependencies and Cordis `inject` require a dedicated review before v0.1.0;
+- **Protocol/Cordis runtime alignment #31** — current `js-esm` packaging is implemented, but the final import-to-Cordis-Plugin contract and the relationship between Protocol dependencies and Cordis `inject` require a dedicated review before v0.1.0;
 - **Genesis #10** — Genesis remains an ordinary Block of ordinary Records; remaining work is deterministic bootstrap composition/fixture design, not reopening ordinary Record/Block identity rules;
 - **Protocol Dev SDK #23** — developer-side build tooling remains deferred until Core/Repo package boundaries are complete.
 
