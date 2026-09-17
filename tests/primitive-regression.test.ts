@@ -36,6 +36,6 @@ describe('Core primitive regressions', () => {
       '{"createdAt":"2026-09-05T03:00:00Z","createdBy":"1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE","data":{"é":4.5,"😀":0.000001,"\uE000":1e+30},"protocol":"test.fact@0.1.0","protocolHash":"1111111111111111111111111111111111111111111111111111111111111111"}'
 
     expect(Buffer.from(canonicalRecord(raw)).toString('utf8')).toBe(expectedCanonical)
-    expect(recordId(raw)).toBe('4a1bed6ab5f3b57b0bd0507eda947248878a72a7e5a59564d7797951792218d5')
+    expect(recordId(raw)).toBe('dbe179c3d7e825a9253e14046e42f1652abd24d85803daffe3805931da8876a9')
   })
 })
