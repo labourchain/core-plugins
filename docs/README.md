@@ -13,57 +13,59 @@
 ## 当前 Core
 
 ```text
-core.plugin
+core.protocol
 core.record
 core.entity
 core.block
 ```
 
-Plugin 与 Entity 数据仍通过普通 `Record.data` 进入链；Block 只承载 Records，没有独立 Plugin release / S0 数据通路。
+Protocol 与 Entity 数据仍通过普通 `Record.data` 进入链；Block 只承载 Records，没有独立 Protocol release / S0 数据通路。
 
-## 当前 Plugin 原则
+LabourChain 使用 **Protocol** 表示链上稳定、版本化、可被历史事实引用的语义与 executable identity；**Plugin** 保留给 Cordis runtime abstraction。二者不能作为同义词使用。
 
-Plugin 是小型可执行协议单元。当前 `core.plugin` 直接承诺一个 exact executable artifact：
+## 当前 Protocol 原则
+
+Protocol 是小型可执行协议单元。当前 `core.protocol` 直接承诺一个 exact executable artifact：
 
 ```text
 ArtifactHash = DoubleSHA256(exact gzip artifact bytes)
 ```
 
-PluginHash 承诺 `name / version / runtime / dependencies / artifactHash`。可选 `artifact` 只是 exact gzip bytes 的 canonical Base64 链内承载，不进入 PluginHash。
+ProtocolHash 承诺 `name / version / runtime / dependencies / artifactHash`。可选 `artifact` 只是 exact gzip bytes 的 canonical Base64 链内承载，不进入 ProtocolHash。
 
 `js-esm` ABI v1 只有一个 gzip executable artifact，因此没有 `runtime.entry`、`files[]`、FileHash manifest 或 runtime schema file。历史 CUE 只作为 Source Fact 保留。
 
-节点验证顺序：
+节点当前验证顺序：
 
 ```text
 resolve exact artifact bytes
--> verify ArtifactHash / PluginHash
+-> verify ArtifactHash / ProtocolHash
 -> bounded gunzip (<= 1 MiB)
 -> import ESM
 ```
 
-1 MiB 是解压后 runtime hard limit，也是 Plugin 工程边界；超过该规模应优先拆 Plugin 或把非执行内容移入 Asset / Runtime。约 500 KiB compressed artifact 只属于 Dev SDK/build tooling warning，不是 Core validity。
+1 MiB 是解压后 runtime hard limit，也是 Protocol 工程边界；超过该规模应优先拆 Protocol 或把非执行内容移入 Asset / Runtime。约 500 KiB compressed artifact 只属于 Dev SDK/build tooling warning，不是 Core validity。
 
-构建、bundle、gzip、reproducible build 属于 Plugin Dev SDK #23 的后续工作。当前 Core 发行先使用 GitHub Releases：raw gzip artifact 与 descriptor/manifest 作为 release assets，GitHub 只是分发渠道，不参与 Plugin validity。
+构建、bundle、gzip、reproducible build 属于 Protocol Dev SDK #23 的后续工作。当前 Core 发行先使用 GitHub Releases：raw gzip artifact 与 descriptor/manifest 作为 release assets，GitHub 只是分发渠道，不参与 Protocol validity。
 
-`docs/`、`spec/`、tests 与历史材料不进入 runtime package 或链上 Plugin artifact。
+`docs/`、`spec/`、tests 与历史材料不进入 runtime package 或链上 Protocol artifact。
 
 ## 当前 Record 原则
 
 Record 是通用事实容器：
 
 ```text
-plugin / pluginHash -> 协议来源
-createdBy / signature -> 主体来源
+protocol / protocolHash -> 协议来源
+createdBy / signature   -> 主体来源
 ```
 
 ```text
 RecordId = DoubleSHA256(JCS(RawRecord))
 ```
 
-RawRecord 包含 `plugin / pluginHash / createdBy / createdAt / data`。普通 Record signature 使用 domain-separated Ed25519 signature over RecordId。
+RawRecord 包含 `protocol / protocolHash / createdBy / createdAt / data`。普通 Record signature 使用 domain-separated Ed25519 signature over RecordId。
 
-`core.record` 不 resolve 或执行 Plugin。runtime/composition 根据 `pluginHash` 解析 exact Plugin。
+`core.record` 不 resolve 或执行 Protocol。runtime/composition 根据 `protocolHash` 解析 exact Protocol implementation。
 
 ## 当前 Entity 原则
 
@@ -104,15 +106,15 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 ### [`architecture.md`](architecture.md)
 
-记录 Core 总体边界与 Plugin / Record / Entity / Block 的组合关系。
+记录 Core 总体边界与 Protocol / Record / Entity / Block 的组合关系。
 
-### [`plugin.md`](plugin.md)
+### [`protocol.md`](protocol.md)
 
-定义单 artifact Plugin model、ArtifactHash / PluginHash、embedded artifact、最小 runtime verification API、size 与 SDK/distribution boundary。
+定义单 artifact Protocol model、ArtifactHash / ProtocolHash、embedded artifact、最小 runtime verification API、size 与 SDK/distribution boundary。
 
 ### [`runtime-abi.md`](runtime-abi.md)
 
-定义 `js-esm` ABI v1、gzip executable artifact、1 MiB bounded gunzip 与 Core build/runtime boundary。
+定义当前 `js-esm` ABI v1、gzip executable artifact、1 MiB bounded gunzip 与 Core build/runtime boundary。Protocol implementation 与 Cordis Plugin runtime 的进一步对齐另行审查。
 
 ### [`release.md`](release.md)
 
@@ -128,7 +130,7 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 ### [`genesis.md`](genesis.md)
 
-保留 `Genesis = Block`、`Plugin = Record.data`，并规定 MVP Core Plugin Records 携带完整 embedded artifact。
+保留 `Genesis = Block`、`Protocol = Record.data`，并规定 MVP Core Protocol Records 携带完整 embedded artifact。
 
 ### [`ordering.md`](ordering.md)
 
@@ -140,11 +142,12 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 当前：
 
-- `core.plugin` 单 artifact runtime contract 已由 #22 收敛并实现；
+- `core.protocol` 单 artifact identity/runtime-verification contract 已由 #22 的实现基础重新命名；
 - `core.record` 已实现；
 - `core.entity` 已实现；
 - ordinary `core.block` confirmation primitives 已实现；
 - `js-esm` ABI v1 / bounded gzip artifact packaging 已实现；
-- Plugin Dev SDK 由 #23 延后到 Core/Repo 边界完成后；
+- Protocol Dev SDK 由 #23 延后到 Core/Repo 边界完成后；
 - GitHub Release-only release/distribution 由 #24 收敛；
-- Genesis bootstrap 由 #10 在 Plugin identity 冻结后继续审查。
+- Protocol/Cordis runtime contract 将在 terminology 恢复后继续审查；
+- Genesis bootstrap 由 #10 在 Protocol identity 冻结后继续审查。
