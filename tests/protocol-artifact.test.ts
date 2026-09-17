@@ -12,14 +12,14 @@ import {
 const encoder = new TextEncoder()
 const runtimeBytes = encoder.encode('export const answer = 42\n')
 const ARTIFACT_HASH = 'b1b8bf911ed5de153f22989da09525b580c32010ab0b6aff249f2d38b8771b47'
-const PROTOCOL_HASH = 'e9cd735789842d6b34c1cfc74404257178816b98dfa29c9178b929e576443397'
+const PROTOCOL_HASH = 'fded1273d27cde70c2bbf2d14fc8495e95bdfd1ad7a7168fe87f71ce36f4de71'
 
 function fixture(): Protocol {
   return {
     name: 'core.protocol',
     version: '0.1.0',
     runtime: {
-      kind: 'js-esm',
+      kind: 'cordis-js-esm',
       abi: 1,
     },
     dependencies: [],
@@ -166,11 +166,14 @@ describe('core.protocol executable identity', () => {
     }
   })
 
-  it('rejects legacy fields, malformed digests, and unsafe ABI values', () => {
+  it('rejects legacy fields, runtime kinds, malformed digests, and unsafe ABI values', () => {
     expect(() => validateProtocol({ ...fixture(), schema: 'schema.cue' })).toThrow(
       /unknown or missing fields/,
     )
     expect(() => validateProtocol({ ...fixture(), files: [] })).toThrow(/unknown or missing fields/)
+    expect(() => validateProtocol({ ...fixture(), runtime: { kind: 'js-esm', abi: 1 } })).toThrow(
+      /cordis-js-esm/,
+    )
 
     const dependencyWithExtra = consumerFixture() as Protocol & {
       dependencies: Array<Protocol['dependencies'][number] & { optional?: boolean }>
@@ -202,7 +205,7 @@ describe('core.protocol executable identity', () => {
     const large: Protocol = {
       name: 'test.large',
       version: '0.1.0',
-      runtime: { kind: 'js-esm', abi: 1 },
+      runtime: { kind: 'cordis-js-esm', abi: 1 },
       dependencies: [],
       artifactHash: artifactHash(largeBytes),
     }
