@@ -1,31 +1,87 @@
 # LabourChain Core Protocols
 
-`@labourchain/core-protocols` 提供 LabourChain 的 `core.protocol`、`core.record`、`core.entity`、`core.block` 四个最小 Core Protocols；可上链 executable artifact 当前使用 `js-esm` ABI v1 的单文件 gzip bundle，完整架构、规格与历史资料维护在 [`docs/`](docs/README.md) 和 [`spec/`](spec/README.md)。
+`@labourchain/core-protocols` contains the deterministic Core Protocol primitives for LabourChain.
 
-LabourChain 的 **Protocol** 表示会被链上历史长期引用的稳定、版本化语义；**Plugin** 一词保留给 Cordis 的运行时插件抽象。Protocol 的 Cordis runtime 对齐另行审查，本仓库不再用 `Plugin` 指代链上 Protocol identity。
+Current Core Protocols:
 
-## Agent / package 使用入口
-
-消费 Core package 时，优先使用明确的 subpath import，而不是从根入口猜测职责。根入口保留聚合导出，但显式 subpath 更容易让 Agent 和代码审查识别正在使用哪个 Core Protocol。
-
-| 任务 | Protocol / import | 主要公共 API | 不负责 |
-| --- | --- | --- | --- |
-| 验证 Protocol descriptor、ArtifactHash、ProtocolHash 和 exact artifact | `core.protocol` / `@labourchain/core-protocols/protocol` | `validateProtocol`, `artifactHash`, `protocolHash`, `verifyArtifact`, `verifyEmbeddedArtifact` | 构建、下载、加载、registry、activation |
-| 处理链级 Ed25519 public-key identity | `core.entity` / `@labourchain/core-protocols/entity` | `validateEntity`, `validateEntityPublicKey`, `encodeBase58btc`, `decodeBase58btc` | 注册状态、Member/Repository、权限与信任 |
-| 规范化/派生/验证 Record，并验证作者签名 | `core.record` / `@labourchain/core-protocols/record` | `canonicalRecord`, `recordId`, `signingPayload`, `validateRawRecord`, `validateRecord`, `verifySignature` | Protocol 执行、私钥签名、业务 DAG |
-| 计算 RecordsRoot / BlockId，并验证 Block/Header confirmation | `core.block` / `@labourchain/core-protocols/block` | `recordsRoot`, `blockId`, `blockSigningPayload`, `verifyHeader`, `verifyBlock` | PoA 授权、canonical-chain policy、业务顺序 |
-
-```ts
-import { verifyArtifact } from '@labourchain/core-protocols/protocol'
-import { validateEntityPublicKey } from '@labourchain/core-protocols/entity'
-import { recordId, verifySignature } from '@labourchain/core-protocols/record'
-import { recordsRoot, verifyBlock } from '@labourchain/core-protocols/block'
+```text
+core.protocol
+core.entity
+core.record
+core.block
 ```
 
-这些 Core API 是确定性的 identity / validation / verification primitives。私钥管理与签名、Protocol resolution/loading、Repo/Member 规则、PoA 授权、持久化、网络、业务语义以及 Cordis Plugin lifecycle 都属于 Core 之外的层。
+The package keeps chain-facing Protocol semantics separate from Cordis runtime composition:
 
-## Release
+```text
+LabourChain Protocol
+= stable, versioned chain semantics + exact executable identity
 
-当前外部发行只使用 GitHub Releases，不发布 npm package。`vMAJOR.MINOR.PATCH` tag 触发完整检查后，Release 上传四个 Core Protocol 的 exact `.js-esm.gz` artifact、对应 descriptor JSON 与 `manifest.json`；下载方仍必须用 ArtifactHash / ProtocolHash 自验证。
+Cordis Plugin
+= runtime composition / dependency injection / lifecycle
+```
 
-完整发行约束见 [`docs/release.md`](docs/release.md) 与 [`spec/release.md`](spec/release.md)。
+## Current runtime direction
+
+Before `v0.1.0`, Core Protocol executable artifacts are being aligned to the accepted `cordis-js-esm` ABI:
+
+```text
+runtime.kind = "cordis-js-esm"
+runtime.abi = 1
+```
+
+The final artifact is an already-built single gzip ESM bundle with one explicit runtime export:
+
+```text
+plugin
+```
+
+and release filenames use:
+
+```text
+<protocol>-<version>.cordis-js-esm.gz
+```
+
+Repo Nodes verify the exact artifact, bounded-gunzip it, import the ESM, validate its Cordis Plugin contract and semantic dependency projection, then mount it through the Host Cordis Context. Nodes do not rebuild Protocol source.
+
+`core.protocol` itself remains a deterministic chain-data/identity primitive. It validates `dependencies[]` as Protocol data but does not inspect `plugin.inject`; SDK/build tooling and the Node loader own that descriptor-to-executable validation.
+
+## Package exports
+
+```text
+@labourchain/core-protocols
+@labourchain/core-protocols/protocol
+@labourchain/core-protocols/entity
+@labourchain/core-protocols/record
+@labourchain/core-protocols/block
+```
+
+The package subpaths expose pure deterministic APIs. The executable Protocol artifacts wrap those APIs behind Cordis Plugin services rather than exposing arbitrary ESM namespaces.
+
+## Verification
+
+```bash
+pnpm install
+pnpm check
+```
+
+`pnpm check` covers TypeScript validation, tests, Core artifact generation, package-export smoke checks, and release-asset verification.
+
+## Documentation
+
+Start with:
+
+- [`docs/README.md`](docs/README.md) — documentation map and current design status;
+- [`docs/architecture.md`](docs/architecture.md) — Core composition and boundaries;
+- [`docs/protocol.md`](docs/protocol.md) — Protocol identity and artifact model;
+- [`docs/runtime-abi.md`](docs/runtime-abi.md) — Cordis executable runtime contract;
+- [`docs/record.md`](docs/record.md) — Record identity and signatures;
+- [`docs/block.md`](docs/block.md) — Block confirmation primitives;
+- [`docs/genesis.md`](docs/genesis.md) — Genesis composition boundary;
+- [`spec/`](spec/) — implementation specifications projected from reviewed docs.
+
+Historical source facts are preserved separately in [`docs/source-baseline.md`](docs/source-baseline.md).
+
+## Status
+
+`v0.1.0` has not been tagged. Protocol/Cordis runtime alignment is tracked in issue #31 and must be completed before the first release.
