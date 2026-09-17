@@ -1,6 +1,6 @@
 # Core Plugin Runtime ABI Specification
 
-Status: implementation target for #22. Design rationale lives in `docs/runtime-abi.md`.
+Status: implemented for the current js-esm ABI v1. Design rationale lives in `docs/runtime-abi.md`.
 
 ## Runtime
 
