@@ -30,7 +30,7 @@ function namespaceFor(value, inject = []) {
 }
 
 describe('Cordis Protocol runtime contract', () => {
-  it('validates and mounts one canonical Protocol service', async () => {
+  it('mounts and reversibly unloads one canonical Protocol service', async () => {
     const value = protocol()
     const namespace = namespaceFor(value)
     const plugin = validateCordisProtocolModule(value, namespace)
@@ -46,7 +46,7 @@ describe('Cordis Protocol runtime contract', () => {
     })).toThrow(/export exactly "plugin"/)
   })
 
-  it('validates semantic dependency projection outside core.protocol', () => {
+  it('validates exact Protocol dependency projection outside core.protocol', () => {
     const dependency = {
       name: 'core.record',
       version: '0.1.0',
@@ -67,6 +67,14 @@ describe('Cordis Protocol runtime contract', () => {
       value,
       namespaceFor(value, { 'protocol:core.record@0.1.0': null, logger: null }),
     )).not.toThrow()
+
+    expect(() => validateCordisProtocolModule(
+      value,
+      namespaceFor(value, [
+        'protocol:core.record@0.1.0',
+        'protocol:undeclared.fact@1.0.0',
+      ]),
+    )).toThrow(/undeclared Protocol dependency protocol:undeclared\.fact@1\.0\.0/)
   })
 
   it('requires canonical Cordis plugin metadata and callable apply', () => {
