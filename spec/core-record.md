@@ -19,13 +19,13 @@ Current design source:
 - `docs/genesis.md`
 - `docs/ordering.md`
 
-Historical `protocol / protocolHash` are migrated to `plugin / pluginHash`.
+Current design restores the historical field names `protocol / protocolHash` while replacing the old schema-only Protocol implementation and Go-specific RecordId encoding with the reviewed executable Protocol and JCS contracts.
 
 The historical repository does not establish ordinary Record signing bytes. The signing contract below is Current Design.
 
-## Plugin identity
+## Protocol identity
 
-The current Core Plugin is:
+The current Core Protocol is:
 
 ```text
 core.record@0.1.0
@@ -36,10 +36,11 @@ core.record@0.1.0
 ```ts
 export type RecordId = string
 import type { EntityPublicKey } from './entity.js'
+import type { ProtocolHash } from './protocol.js'
 
 export interface RawRecord {
-  plugin: string
-  pluginHash: string
+  protocol: string
+  protocolHash: ProtocolHash
   createdBy: EntityPublicKey
   createdAt: string
   data: unknown
@@ -56,8 +57,8 @@ export interface Record extends RawRecord {
 `RawRecord` contains exactly:
 
 ```text
-plugin
-pluginHash
+protocol
+protocolHash
 createdBy
 createdAt
 data
@@ -67,8 +68,8 @@ data
 
 ```text
 id
-plugin
-pluginHash
+protocol
+protocolHash
 createdBy
 createdAt
 signature
@@ -82,41 +83,41 @@ Unknown top-level fields are invalid in `core.record@0.1.0`.
 Record exposes two independent sources:
 
 ```text
-plugin / pluginHash
+protocol / protocolHash
 -> protocol source
--> which chain Plugin/protocol produced or issued this Record
+-> which chain Protocol produced, issued, or interprets this Record
 
 createdBy / signature
 -> actor source
 -> which Entity confirms responsibility for this Record
 ```
 
-`createdBy` does not identify the publisher of the referenced Plugin.
+`createdBy` does not identify the publisher of the referenced Protocol.
 
-## `plugin`
+## `protocol`
 
-`plugin` is a human-readable declaration:
+`protocol` is a human-readable declaration:
 
 ```text
 name@version
 ```
 
-The `name` and exact SemVer syntax follow the current `core.plugin` grammar.
+The `name` and exact SemVer syntax follow the current `core.protocol` grammar.
 
 Examples:
 
 ```text
-core.plugin@0.1.0
+core.protocol@0.1.0
 labour.work@1.2.3
 ```
 
-`plugin` is signed fact content and therefore participates in RecordId.
+`protocol` is signed fact content and therefore participates in RecordId.
 
-It is not runtime authority. Runner/runtime must not require resolving `pluginHash` and comparing the resolved Plugin name/version to this field.
+It is not runtime authority. Runtime/composition must not require resolving `protocolHash` and comparing the resolved Protocol name/version to this field.
 
-## `pluginHash`
+## `protocolHash`
 
-`pluginHash` is the exact machine identity of the Plugin/protocol that produced the Record.
+`protocolHash` is the exact machine identity of the Protocol that produced or interprets the Record.
 
 Wire representation:
 
@@ -124,9 +125,9 @@ Wire representation:
 64-character lowercase hexadecimal
 ```
 
-Runtime/composition resolves/executes the protocol by `pluginHash`.
+Runtime/composition resolves the exact Protocol implementation by `protocolHash`.
 
-`core.record` validates only the representation. It does not resolve Plugin data, artifact bytes, dependencies, activation state or Block availability.
+`core.record` validates only the representation. It does not resolve Protocol data, artifact bytes, dependencies, activation state, Cordis Plugin lifecycle, or Block availability.
 
 ## `createdBy`
 
@@ -150,7 +151,7 @@ No Base58Check checksum, version byte or implicit prefix is used.
 
 ## `data`
 
-`data` is the complete Plugin-produced fact payload.
+`data` is the complete Protocol-produced fact payload.
 
 It must be representable as deterministic RFC 8785 JCS / I-JSON data without retaining JavaScript values that collapse to the same canonical JSON representation.
 
@@ -187,7 +188,7 @@ Ordinary array means an Array whose direct prototype is `Array.prototype`, whose
 
 Symbol-keyed properties are invalid.
 
-A domain Plugin may impose stronger payload rules; those rules are not part of `core.record` validation.
+A domain Protocol may impose stronger payload rules; those rules are not part of `core.record` validation.
 
 ## Canonical Record bytes
 
@@ -195,7 +196,7 @@ A domain Plugin may impose stronger payload rules; those rules are not part of `
 
 1. validate the exact RawRecord shape and common field representations;
 2. validate that `data` is supported JCS/I-JSON data;
-3. construct the RawRecord identity object from exactly `plugin`, `pluginHash`, `createdBy`, `createdAt`, `data`;
+3. construct the RawRecord identity object from exactly `protocol`, `protocolHash`, `createdBy`, `createdAt`, `data`;
 4. serialize it using RFC 8785 JSON Canonicalization Scheme;
 5. return exact UTF-8 bytes.
 
@@ -216,8 +217,8 @@ The serialized RecordId is 64-character lowercase hexadecimal.
 RecordId commits to the complete RawRecord:
 
 ```text
-plugin
-pluginHash
+protocol
+protocolHash
 createdBy
 createdAt
 data
@@ -230,29 +231,23 @@ id
 signature
 ```
 
-This deliberately replaces the historical Go-specific:
-
-```text
-plugin:pluginHash:createdBy:createdAt:JSON(data)
-```
-
-style with a cross-language JCS identity contract.
+This deliberately replaces the historical Go-specific colon-concatenation identity with a cross-language JCS identity contract.
 
 ## Full `data` participation
 
-`core.record` does not omit storage-like or Plugin-specific fields from `data` when deriving RecordId.
+`core.record` does not omit storage-like or Protocol-specific fields from `data` when deriving RecordId.
 
 Therefore when:
 
 ```text
-Record.data = Plugin
+Record.data = Protocol
 ```
 
-and that Plugin contains `artifact`, the artifact field participates in RecordId because it is part of the actual chain fact.
+and that Protocol contains `artifact`, the artifact field participates in RecordId because it is part of the actual chain fact.
 
-This is distinct from `PluginHash`, whose identity form intentionally excludes Plugin.artifact storage representation.
+This is distinct from `ProtocolHash`, whose identity form intentionally excludes `Protocol.artifact` storage representation.
 
-Consequently, two Plugin Records may have the same PluginHash but different RecordId when one carries embedded artifact bytes and the other does not.
+Consequently, two Protocol Records may have the same ProtocolHash but different RecordId when one carries embedded artifact bytes and the other does not.
 
 ## Record representation validation
 
@@ -350,32 +345,35 @@ Record
 
 Low-level JCS, DoubleSHA256 and Ed25519 SPKI construction remain internal. Base58btc and Entity public-key representation belong to `core.entity` and are reused here rather than duplicated.
 
-## Plugin/runtime boundary
+## Protocol/runtime boundary
 
-`core.record` must not expose a `pluginResolver`, `activePluginState` or equivalent Plugin-state API.
+`core.record` must not expose a `protocolResolver`, `activeProtocolState` or equivalent Protocol-state API.
 
 The composition is:
 
 ```text
 Record
 -> core.record validates envelope / RecordId / actor signature
--> runtime uses pluginHash to locate exact Plugin
--> core.plugin verifies Plugin identity/artifact
--> Plugin executes its own protocol-specific Record rules
+-> runtime uses protocolHash to locate exact Protocol implementation
+-> core.protocol verifies Protocol identity/artifact
+-> Protocol implementation executes its own Record rules
 ```
 
-`plugin = name@version` remains signed human-readable declaration and is not machine execution authority.
+`protocol = name@version` remains signed human-readable declaration and is not machine execution authority.
+
+Cordis Plugin mounting/lifecycle belongs to runtime composition and must not be duplicated by `core.record`.
 
 ## Out of scope
 
 `core.record` does not define:
 
 ```text
-Plugin resolution/fetch/cache
-Plugin execution
-Plugin dependency resolution
-Plugin activation / lifecycle
-same-Block Plugin availability
+Protocol resolution/fetch/cache
+Protocol execution
+Protocol dependency resolution
+Protocol activation / lifecycle
+Cordis Plugin lifecycle
+same-Block Protocol availability
 Block ordering / packing
 Genesis exceptions
 Repository issuer authorization
@@ -403,8 +401,8 @@ Genesis review may later define bootstrap-specific construction/recognition rule
 Reject at least:
 
 - non-object or unknown/missing top-level fields;
-- malformed `plugin` declaration;
-- malformed `pluginHash`;
+- malformed `protocol` declaration;
+- malformed `protocolHash`;
 - malformed base58btc `createdBy` or decoded key length != 32;
 - non-string / invalid-Unicode `createdAt`;
 - non-JCS/I-JSON `data`, including `-0`, Array subclasses, sparse/extended arrays, accessors and symbol-keyed properties;
@@ -414,7 +412,7 @@ Reject at least:
 
 `verifySignature()` additionally returns `false` for a well-formed but cryptographically invalid Ed25519 signature.
 
-Do not reject based on Plugin availability, Block position, business DAG topology or wall-clock interpretation.
+Do not reject based on Protocol availability, Block position, business DAG topology or wall-clock interpretation.
 
 ## Tests
 
@@ -422,10 +420,10 @@ Meaningful tests must cover:
 
 - fixed JCS canonical RawRecord bytes and fixed RecordId fixture;
 - object property order independence in RawRecord/data;
-- `plugin`, `pluginHash`, `createdBy`, `createdAt`, and full `data` mutations changing RecordId;
-- embedded Plugin artifact presence changing RecordId while PluginHash can remain unchanged;
+- `protocol`, `protocolHash`, `createdBy`, `createdAt`, and full `data` mutations changing RecordId;
+- embedded Protocol artifact presence changing RecordId while ProtocolHash can remain unchanged;
 - exact top-level shape;
-- plugin / PluginHash representation validation;
+- protocol / ProtocolHash representation validation;
 - shared `core.entity` base58btc 32-byte Ed25519 public-key validation;
 - malformed JSON/JCS values, `-0`, Array subclasses and invalid Unicode rejection;
 - supplied RecordId mismatch rejection;
@@ -433,4 +431,4 @@ Meaningful tests must cover:
 - valid Ed25519 signature verification;
 - wrong signature returning false;
 - signature not participating in RecordId;
-- no Plugin resolver/state dependency in `core.record` API.
+- no Protocol resolver/state dependency in `core.record` API.
