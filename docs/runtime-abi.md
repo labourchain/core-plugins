@@ -32,20 +32,28 @@ source
 ```ts
 export const plugin = {
   name: 'core.record@0.1.0',
+  provide: 'protocol:core.record@0.1.0',
   inject: [],
   apply(ctx) {
-    // register this Protocol implementation's capability
+    ctx.provide('protocol:core.record@0.1.0', implementation)
   },
 }
 ```
 
-导入后的 ESM namespace MUST 只暴露 `plugin` 这一项 runtime export。`plugin` MUST 是可直接传给 `ctx.plugin()` 的 Cordis object Plugin，并至少具有可调用的 `apply(ctx, ...)`。`name` 用于诊断；`inject` 使用 Cordis 自身的 dependency contract。
+导入后的 ESM namespace MUST 只暴露 `plugin` 这一项 runtime export。`plugin` MUST 是可直接传给 `ctx.plugin()` 的 Cordis object Plugin，并至少满足：
 
-Protocol capability 不通过任意 ESM exports 暴露。实现需要提供给其他 Protocol 的能力时，应在 `plugin.apply()` 中通过 Cordis Service / `ctx.provide()` 等 Cordis 原生机制注册，使其生命周期归当前 Fiber 管理。
+```text
+plugin.name = <name>@<version>
+plugin.provide = protocol:<name>@<version>
+plugin.inject = explicit Cordis Inject declaration
+plugin.apply = callable
+```
 
-Core 的纯函数 package API（例如 `recordId()`、`verifySignature()`、`recordsRoot()`）仍可作为源码/包级 API 存在；thin runtime wrapper 使用这些 API，但它们不直接成为 Protocol artifact 的任意 module exports。
+`provide` 是 Cordis Plugin metadata，用于显式声明该 Protocol implementation 提供的 canonical service；`ctx.provide()` 负责实际注册 service，使其生命周期归当前 Fiber 管理。两者职责不同，但 ABI v1 要求声明与实际提供使用同一个 canonical service key。
 
-ABI 不重新定义 Cordis Plugin、Context、Fiber、Service、inject、effect 或 lifecycle。
+Protocol capability 不通过任意 ESM exports 暴露。Core 的纯函数 package API（例如 `recordId()`、`verifySignature()`、`recordsRoot()`）仍可作为源码/包级 API 存在；thin runtime wrapper 使用这些 API，但它们不直接成为 Protocol artifact 的任意 module exports。
+
+ABI 不重新定义 Cordis Plugin、Context、Fiber、Service、inject、provide、effect 或 lifecycle。
 
 ## Host loading boundary
 
@@ -56,8 +64,9 @@ resolve exact gzip artifact bytes
 -> verify ArtifactHash / ProtocolHash
 -> bounded gunzip
 -> materialize/import ESM
--> require exact `plugin` export shape
--> verify semantic dependency projection
+-> require exact `plugin` module export
+-> validate plugin.name / provide / apply
+-> verify semantic dependency projection against plugin.inject
 -> ctx.plugin(plugin, config?)
 -> Cordis Fiber / inject / lifecycle
 ```
@@ -134,6 +143,8 @@ Host 仍必须按 `protocolHash` 解析和验证 exact dependency implementation
 project(Protocol.dependencies[]) ⊆ plugin.inject
 ```
 
+Cordis `Inject` 可以使用数组或 name-to-config map；SDK/Node 在做 projection validation 时只比较 required service names，不把 runtime intercept config 纳入 Protocol identity。
+
 ### Validation ownership
 
 这里必须区分三种验证：
@@ -188,6 +199,7 @@ source entry
 -> bundle ordinary source/build dependencies
 -> construct thin Cordis Plugin wrapper
 -> enforce explicit `plugin` export
+-> validate plugin.name / provide / inject / apply
 -> validate semantic dependency -> inject projection
 -> deterministic gzip
 -> ArtifactHash / ProtocolHash
@@ -201,7 +213,7 @@ resolve
 -> verify Protocol/artifact identity through core.protocol
 -> bounded gunzip
 -> import
--> validate plugin export/dependency projection
+-> validate plugin runtime contract/dependency projection
 -> resolve exact Protocol dependencies
 -> mount in Host Cordis
 -> cache / dispose / reload through runtime lifecycle
