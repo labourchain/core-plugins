@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { gzipSync } from 'node:zlib'
 import { build } from 'esbuild'
-import { artifactHash, verifyEmbeddedArtifact } from '../lib/plugin.js'
+import { artifactHash, verifyEmbeddedArtifact } from '../lib/protocol.js'
 import { assertRuntimeSize, gunzipRuntime } from './runtime-bundle.mjs'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -14,15 +14,15 @@ const VERSION = PACKAGE.version
 const ABI = 1
 const LARGE_ARTIFACT_BYTES = 500 * 1024
 
-const CORE_PLUGINS = [
+const CORE_PROTOCOLS = [
   {
-    name: 'core.plugin',
-    main: 'plugin.js',
+    name: 'core.protocol',
+    main: 'protocol.js',
     exports: [
-      'PluginError',
+      'ProtocolError',
       'artifactHash',
-      'pluginHash',
-      'validatePlugin',
+      'protocolHash',
+      'validateProtocol',
       'verifyArtifact',
       'verifyEmbeddedArtifact',
     ],
@@ -107,11 +107,11 @@ function canonicalGzip(bytes) {
   return compressed
 }
 
-async function buildCorePlugin(config) {
+async function buildCoreProtocol(config) {
   const runtimeBytes = await buildRuntimeBundle(config)
   const artifactBytes = canonicalGzip(runtimeBytes)
   const artifact = artifactBytes.toString('base64')
-  const plugin = {
+  const protocol = {
     name: config.name,
     version: VERSION,
     runtime: { kind: 'js-esm', abi: ABI },
@@ -120,26 +120,26 @@ async function buildCorePlugin(config) {
     artifact,
   }
 
-  const pluginHash = verifyEmbeddedArtifact(plugin)
+  const protocolHash = verifyEmbeddedArtifact(protocol)
   const diagnostics = {
     runtimeSize: runtimeBytes.byteLength,
     artifactSize: artifactBytes.byteLength,
     base64Size: Buffer.byteLength(artifact, 'ascii'),
   }
-  return { pluginHash, plugin, diagnostics, artifactBytes }
+  return { protocolHash, protocol, diagnostics, artifactBytes }
 }
 
 async function smokeLoad(config, built) {
-  const root = await mkdtemp(join(tmpdir(), 'labourchain-core-plugin-'))
+  const root = await mkdtemp(join(tmpdir(), 'labourchain-core-protocol-'))
   try {
-    if (built.plugin.artifact === undefined) {
+    if (built.protocol.artifact === undefined) {
       throw new Error(`${config.name} artifact is missing`)
     }
-    const runtimeBytes = gunzipRuntime(Buffer.from(built.plugin.artifact, 'base64'))
+    const runtimeBytes = gunzipRuntime(Buffer.from(built.protocol.artifact, 'base64'))
     const runtimePath = join(root, 'runtime.mjs')
     await writeFile(runtimePath, runtimeBytes)
 
-    const namespace = await import(`${pathToFileURL(runtimePath).href}?${built.pluginHash}`)
+    const namespace = await import(`${pathToFileURL(runtimePath).href}?${built.protocolHash}`)
     for (const name of config.exports) {
       if (!(name in namespace)) {
         throw new Error(`${config.name} runtime is missing required export ${name}`)
@@ -158,28 +158,28 @@ async function main() {
   await rm(OUT_DIR, { recursive: true, force: true })
   await mkdir(OUT_DIR, { recursive: true })
 
-  const plugins = []
+  const protocols = []
 
-  for (const config of CORE_PLUGINS) {
-    const built = await buildCorePlugin(config)
+  for (const config of CORE_PROTOCOLS) {
+    const built = await buildCoreProtocol(config)
     await smokeLoad(config, built)
 
     const descriptorFile = `${config.name}-${VERSION}.json`
     const artifactFile = `${config.name}-${VERSION}.js-esm.gz`
     const descriptor = {
-      pluginHash: built.pluginHash,
-      plugin: built.plugin,
+      protocolHash: built.protocolHash,
+      protocol: built.protocol,
       diagnostics: built.diagnostics,
     }
 
     await writeFile(join(OUT_DIR, descriptorFile), `${JSON.stringify(descriptor, null, 2)}\n`)
     await writeFile(join(OUT_DIR, artifactFile), built.artifactBytes)
 
-    plugins.push({
+    protocols.push({
       name: config.name,
       version: VERSION,
-      pluginHash: built.pluginHash,
-      artifactHash: built.plugin.artifactHash,
+      protocolHash: built.protocolHash,
+      artifactHash: built.protocol.artifactHash,
       descriptorFile,
       artifactFile,
       ...built.diagnostics,
@@ -187,7 +187,7 @@ async function main() {
 
     const { runtimeSize, artifactSize, base64Size } = built.diagnostics
     console.log(
-      `${config.name} ${built.pluginHash} runtime=${kib(runtimeSize)} KiB artifact=${kib(artifactSize)} KiB base64=${kib(base64Size)} KiB`,
+      `${config.name} ${built.protocolHash} runtime=${kib(runtimeSize)} KiB artifact=${kib(artifactSize)} KiB base64=${kib(base64Size)} KiB`,
     )
     if (artifactSize > LARGE_ARTIFACT_BYTES) {
       console.warn(`${config.name}: large executable artifact; consider moving static resources to Assets`)
@@ -197,7 +197,7 @@ async function main() {
   const manifest = {
     version: VERSION,
     runtime: { kind: 'js-esm', abi: ABI },
-    plugins,
+    protocols,
   }
   await writeFile(join(OUT_DIR, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
 }
