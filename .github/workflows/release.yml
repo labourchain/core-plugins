@@ -51,7 +51,7 @@ jobs:
             --verify-tag \
             --draft \
             --generate-notes \
-            --title "LabourChain Core Plugins $GITHUB_REF_NAME"
+            --title "LabourChain Core Protocols $GITHUB_REF_NAME"
 
       - name: Publish GitHub Release
         env:
