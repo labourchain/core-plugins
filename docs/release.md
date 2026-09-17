@@ -6,6 +6,8 @@
 
 GitHub Release 只负责传输和发现，不参与链上有效性判断。无论 artifact 来自链内 embedded `Protocol.artifact`、GitHub Release、缓存或未来镜像，节点都必须对 exact gzip bytes 验证 `ArtifactHash`，并对 Protocol descriptor 验证 `ProtocolHash`。
 
+Release 分发的是**已经构建完成的 Protocol executable artifact**。Repo Node 下载后执行 verify/gunzip/import/mount，不在本地重新 compile、install 或 bundle Protocol。
+
 ## Release unit
 
 当前四个 Core Protocols 使用统一版本并随仓库一起发行：
@@ -27,9 +29,22 @@ tag 版本必须与 `package.json.version` 以及生成的四个 Protocol descri
 
 `package.json` 是当前 Core release version 的单一源码；package 标记为 `private`，本流程不执行 npm publish。
 
-## Release assets
+## Runtime artifact migration
 
-`pnpm build:artifacts` 生成且只生成：
+#31 已在 docs 层接受：
+
+```text
+runtime.kind = "cordis-js-esm"
+runtime.abi = 1
+```
+
+最终 release artifact 解压后必须是 single-file ESM，并显式导出可直接交给 Host `ctx.plugin()` 的唯一 runtime entry `plugin`。
+
+当前 `main` 的 release builder 仍是 pre-#31 `js-esm` pure API artifact 实现。下面列出的 `.js-esm.gz` 文件名和 frozen ProtocolHash 都描述**当前实现状态**，不是已经冻结的 v0.1.0 最终 runtime identity。docs 审查完成后，spec/implementation/release naming 与 regression fixtures 必须一起迁移；v0.1.0 之前不保留旧 runtime compatibility path。
+
+## Current implementation release assets
+
+当前 `pnpm build:artifacts` 生成且只生成：
 
 ```text
 dist/core-artifacts/
@@ -44,7 +59,7 @@ dist/core-artifacts/
 └── manifest.json
 ```
 
-`.js-esm.gz` 是当前 Protocol implementation 的 exact artifact bytes，也是 GitHub Release 上真正可被 resolver 下载的外部 artifact。
+这些 `.js-esm.gz` 是当前 pre-#31 implementation 的 exact artifact bytes。#31 实现阶段可以为 `cordis-js-esm` 选择更明确的 artifact filename；文件名是 release metadata，不参与 ProtocolHash，但必须由 release spec 明确并由 verifier 固定。
 
 每个 `.json` 包含对应 Protocol descriptor、ProtocolHash、embedded canonical Base64 artifact 与 size diagnostics，便于 bootstrap、检查和人工审阅。
 
@@ -58,20 +73,30 @@ GitHub 自动生成的 source archive 只属于源码分发；`docs/`、`spec/`�
 
 ```text
 manifest.json
--> require the exact expected nine-file asset set
+-> require exact expected asset set
 -> require canonical versioned descriptor/artifact filenames
--> read descriptor .json
--> read raw .js-esm.gz
+-> read descriptor
+-> read raw gzip artifact
 -> verify ArtifactHash / ProtocolHash through core.protocol
 -> compare embedded Base64 bytes with raw gzip bytes
 -> bounded gunzip
+-> verify runtime ABI-specific executable contract
 -> verify manifest diagnostics == descriptor diagnostics == actual sizes
--> verify frozen pre-v0.1 Core ProtocolHash fixtures
+-> verify frozen Core ProtocolHash fixtures
 ```
 
-当前四个 Core ProtocolHash 在首个 `v0.1.0` 发布前作为 release regression fixture 固定。由于 ProtocolHash 承诺 `artifactHash`，任何 executable artifact byte 变化也会使该门禁失败。若后续确实需要改变 Core executable identity，必须在审查对应实现/构建变化后显式更新 fixture，而不能由自洽的 build 输出自动覆盖。
+在 `cordis-js-esm` 迁移后，runtime ABI-specific verification 还必须包括：
 
-`pnpm check` 包含这一步，因此普通 PR CI 也保护 release asset contract。
+```text
+import ESM
+-> namespace exports exactly `plugin`
+-> plugin satisfies accepted Cordis object Plugin shape
+-> chain semantic dependencies project into plugin.inject
+```
+
+当前四个 pre-#31 Core ProtocolHash 作为现有 builder 的 regression fixture 固定。迁移到 `cordis-js-esm` 必然改变 artifact bytes、ArtifactHash 与 ProtocolHash，因此实现 #31 时必须显式更新 fixture，并在 diff 中解释 identity 变化来源。
+
+`pnpm check` 包含 release asset verification，因此普通 PR CI 也保护 release contract。
 
 ## Build environment
 
@@ -85,7 +110,7 @@ esbuild    0.28.2
 gzip       level 9, MTIME=0, no optional fields, OS=255
 ```
 
-这只是 canonical release bytes 的构建环境约束。Protocol runtime compatibility 当前仍然是 Node 22-compatible `js-esm` ABI v1；其 Cordis Plugin runtime contract 由 #31 独立审查。
+这只是 canonical release bytes 的构建环境约束。最终 Protocol runtime compatibility 由 `cordis-js-esm` ABI 定义；Node/Host 消费的是已经生成并验证的 executable bytes，而不是复现 build environment。
 
 ## GitHub Release workflow
 
@@ -130,5 +155,7 @@ embedded Protocol.artifact -> Genesis / offline bootstrap
 GitHub Release .gz          -> 外部下载与镜像
 GitHub repository/archive   -> source / docs / history
 ```
+
+这些渠道只回答“从哪里得到 exact executable bytes”。它们不改变 artifact 已经完成构建、可直接进入 ABI loading pipeline 的事实。
 
 未来增加 object storage、registry 或 LabourChain-native discovery 时，它们仍只能解析和转发 exact artifact，不获得新的 consensus authority。
