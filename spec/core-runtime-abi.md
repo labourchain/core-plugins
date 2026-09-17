@@ -1,6 +1,6 @@
 # Core Plugin Runtime ABI Specification
 
-Status: implementation target for #20. Design rationale lives in `docs/runtime-abi.md`.
+Status: implementation target for #22. Design rationale lives in `docs/runtime-abi.md`.
 
 ## Runtime
 
@@ -9,68 +9,75 @@ Every initial Core Plugin MUST use:
 ```text
 runtime.kind = "js-esm"
 runtime.abi = 1
-runtime.entry = "runtime.mjs.gz"
 ```
 
-`runtime.entry` MUST identify the gzip-compressed executable bundle committed by `Plugin.files[]`.
+ABI v1 defines exactly one executable artifact for each Plugin. `runtime.entry`, `files[]`, `PluginFile`, schema paths, and multi-file artifact maps are not part of this model.
 
-Given already-verified artifact bytes, the runner MUST:
+Given already-resolved artifact bytes, the runner MUST:
 
 ```text
-read runtime.entry gzip bytes
+verify ArtifactHash / PluginHash
 -> gunzip with a 1 MiB maximum output limit
 -> import decompressed bytes as ESM
 -> expose module namespace
 ```
 
-A decompressed runtime larger than 1 MiB MUST be rejected before import. This is both a resource-safety boundary and an executable-size boundary: Plugins exceeding it SHOULD be split, or move non-executable content to Asset/Runtime. It is independent from the roughly 500 KiB compressed-artifact engineering warning.
+A decompressed runtime larger than 1 MiB MUST be rejected before import. Plugins exceeding it SHOULD be split, or move non-executable content to Asset / Runtime.
 
 The runner MUST NOT wrap results/errors in another RPC or lifecycle protocol. Current Core artifacts require a Node.js 22-compatible host with ESM, `node:crypto`, and `Buffer` support.
 
-## Artifact files
+## Plugin identity
 
-Every generated Core artifact MUST contain exactly the runtime gzip bundle plus the temporary schema compatibility file:
+The Core Plugin value MUST be equivalent to:
+
+```ts
+interface Plugin {
+  name: string
+  version: string
+  runtime: {
+    kind: 'js-esm'
+    abi: number
+  }
+  dependencies: PluginDependency[]
+  artifactHash: ArtifactHash
+  artifact?: string
+}
+```
+
+`artifactHash` MUST equal:
 
 ```text
-runtime.mjs.gz
-schema.json
+DoubleSHA256(exact gzip artifact bytes)
 ```
 
-`runtime.mjs.gz` MUST contain one bundled ESM module. Relative Core source dependencies MUST be bundled into that module; separate `record.js` / `entity.js` helper files MUST NOT be emitted into the artifact.
+`artifactHash` MUST participate in PluginHash. Optional embedded `artifact` MUST be canonical RFC 4648 Base64 of the exact gzip bytes and MUST NOT participate in PluginHash.
 
-`schema.json` bytes are exactly:
+Therefore embedded, cached, mirrored, or otherwise resolved copies of the same exact bytes MUST identify the same Plugin.
 
-```json
-{}
-```
+## Dependencies
 
-followed by LF. This is a temporary compatibility placeholder required by the existing `core.plugin@0.1.0` `Plugin.schema` contract. It is not an executable validator or normative schema. #22 owns removal/redefinition of that field and the runtime/Dev-SDK API split.
+`dependencies[]` describes only independently resolved chain-level Plugin dependencies. `pluginHash` is the authoritative dependency identity. Dependency names MUST be unique and canonical identity MUST sort dependencies by name using UTF-8 byte order.
 
-All four generated Plugins MUST use `dependencies = []`.
+Initial `core.plugin`, `core.entity`, `core.record`, and `core.block` artifacts MUST use `dependencies = []`; their source-level relative imports are bundled into the single executable artifact.
 
-## Required runtime exports
+## Public core.plugin runtime API
+
+The public API MUST be limited to:
 
 ```text
-core.plugin:
-  PluginArtifactError canonicalPlugin fileHash pluginHash
-  validatePlugin verifyArtifact verifyEmbeddedArtifact
-
-core.entity:
-  EntityError decodeBase58btc encodeBase58btc
-  validateEntity validateEntityPublicKey
-
-core.record:
-  RECORD_SIGNING_DOMAIN RecordError canonicalRecord recordId signingPayload
-  validateRawRecord validateRecord verifySignature
-
-core.block:
-  BLOCK_SIGNING_DOMAIN BlockError blockId blockSigningPayload
-  recordsRoot verifyBlock verifyHeader
+PluginError
+validatePlugin
+artifactHash
+pluginHash
+verifyArtifact
+verifyEmbeddedArtifact
 ```
 
-These export sets describe the current implementation only. #22 MUST review which `core.plugin` exports remain runtime-required and which belong in the future Plugin Dev SDK.
+JCS serialization, canonical identity construction, dependency normalization helpers, and build/package construction helpers MUST remain internal.
 
-## Deterministic build
+`artifactHash()` remains public because exact artifact hashing is a runtime verification primitive and can also be reused by Plugin Dev SDK #23 without duplicating the protocol hash algorithm.
+
+## Build profile
 
 Artifact generation MUST:
 
@@ -81,15 +88,11 @@ Artifact generation MUST:
 - reject a decompressed ESM bundle larger than 1 MiB;
 - gzip the bundle at level 9;
 - normalize the gzip header to no optional fields, `MTIME = 0`, and `OS = 255` before hashing;
-- use explicit artifact paths rather than directory enumeration;
-- sort `files[]` by UTF-8 artifact path;
-- use fixed compatibility schema bytes;
-- reuse existing `fileHash()` / `verifyEmbeddedArtifact()` while `core.plugin@0.1.0` remains unchanged;
+- set `artifactHash` from the exact gzip bytes;
+- use canonical Base64 only when embedding those bytes in `Plugin.artifact`;
 - exclude timestamps, absolute paths, filesystem ordering, host metadata, and network inputs from Plugin descriptor identity.
 
-The gzip bytes themselves are the published executable artifact bytes and therefore MUST be hashed and embedded. Base64 is only the current JSON wire encoding of those bytes.
-
-Reproducible reconstruction of identical gzip bytes from source across arbitrary build environments is Plugin Dev SDK #23 work. Runtime validity verifies the exact published bytes and does not rebuild source.
+The gzip bytes themselves are the published executable artifact bytes. Reproducible reconstruction of identical gzip bytes from source across arbitrary build environments is Plugin Dev SDK #23 work; runtime validity verifies the exact published bytes and does not rebuild source.
 
 ## Verification
 
@@ -97,20 +100,22 @@ Reproducible reconstruction of identical gzip bytes from source across arbitrary
 
 1. build one ESM bundle and reject it if it exceeds 1 MiB;
 2. gzip the bundle and normalize gzip metadata;
-3. build the current embedded Plugin value around the gzip bytes;
-4. pass `verifyEmbeddedArtifact()`;
-5. read and gunzip `runtime.entry` from the embedded artifact with a 1 MiB `maxOutputLength`;
-6. import the decompressed ESM;
-7. verify the required runtime exports exist;
-8. report decompressed runtime size, gzip artifact size, and Base64 wire size;
-9. warn above roughly 500 KiB based on actual artifact bytes.
+3. calculate `artifactHash` from the exact gzip bytes;
+4. build the simplified embedded Plugin value;
+5. pass `verifyEmbeddedArtifact()`;
+6. bounded-gunzip the embedded artifact with a 1 MiB maximum output;
+7. import the decompressed ESM;
+8. verify the required runtime exports exist;
+9. report decompressed runtime size, gzip artifact size, and Base64 wire size.
 
 Regression tests MUST verify both that exactly 1 MiB is accepted and that a small gzip input expanding beyond 1 MiB is rejected before import.
 
-Generated local reports under `dist/` are tooling output only and MUST NOT become a second chain-data manifest.
-
 ## Distribution boundary
 
-`docs/`, `spec/`, tests, source history, and migration material MUST NOT be part of the generated Plugin artifact. Build/bundle/compression/publishing helpers are development tooling and are expected to move to a separate Plugin Dev SDK package; they are not runtime responsibilities of `core.plugin`.
+`docs/`, `spec/`, tests, source history, migration material, build inputs, human description, release notes, registry metadata, and package-manager metadata MUST NOT become part of Plugin runtime identity merely because they accompany a release.
 
-Genesis #10 may consume the generated ordinary Plugin values/PluginHashes; this spec introduces no Genesis-specific validity path.
+Build/bundle/compression/reproducible-build helpers belong to Plugin Dev SDK #23. Release/discovery channels belong to #24. Neither is a runtime dependency of `core.plugin`.
+
+Historical CUE remains Source Fact only and is not a current runtime schema.
+
+Genesis #10 may consume the generated ordinary Plugin values / PluginHashes; this spec introduces no Genesis-specific validity path.

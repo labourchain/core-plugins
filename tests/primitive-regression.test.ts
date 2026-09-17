@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { encodeBase58btc, validateEntityPublicKey } from '../src/entity.js'
-import { fileHash } from '../src/plugin.js'
+import { artifactHash } from '../src/plugin.js'
 import { canonicalRecord, recordId, type RawRecord } from '../src/record.js'
 
 const CREATED_BY = '1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE'
 const PLUGIN_HASH = '11'.repeat(32)
 
 describe('Core primitive regressions', () => {
-  it('rejects non-byte fileHash input at the public runtime boundary', () => {
-    expect(() => fileHash('abc' as unknown as Uint8Array)).toThrow(/must be bytes/)
+  it('rejects non-byte artifactHash input at the public runtime boundary', () => {
+    expect(() => artifactHash('abc' as unknown as Uint8Array)).toThrow(/must be bytes/)
   })
 
   it('accepts the maximum-length base58btc encoding of a 32-byte Ed25519 key', () => {

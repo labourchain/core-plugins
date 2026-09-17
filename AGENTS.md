@@ -67,7 +67,7 @@ Record[]
 
 Plugin definitions do not use a separate `PluginRelease` chain-data type. Genesis is still a Block containing Records; there is no standalone `GenesisManifest`, `GenesisId`-based Plugin state, or `S0 Plugin artifact set` unless a later reviewed design explicitly introduces one.
 
-Do not reintroduce `activePluginState`, N→N+1 activation, same-Block Plugin rejection, Repository-issued Plugin state, or similar availability rules as established facts. Plugin availability/resolution is a runtime/Block-composition concern, not a `core.plugin` or `core.record` state API.
+Do not reintroduce `activePluginState`, N→N+1 activation, same-Block Plugin rejection, Repository-issued Plugin state, or similar availability rules as established facts. Plugin availability/resolution is a runtime/composition concern, not a `core.plugin`, `core.record`, or `core.block` state API.
 
 ## Plugin identity and artifact rule
 
@@ -75,35 +75,48 @@ A Plugin is executable protocol data carried by `Record.data`.
 
 Current Plugin identity follows `docs/plugin.md` and `spec/core-plugin.md`:
 
-- runtime/schema files are described by canonical paths;
-- every file is locked by `path + size + FileHash`;
-- exact chain-Plugin dependencies use `name + version + PluginHash`;
-- dependency/file arrays are canonicalized before JCS;
-- `PluginHash = DoubleSHA256(canonical Plugin identity bytes)`;
-- ordinary npm/pnpm/build dependencies are bundled or otherwise handled before runtime;
-- runtime chain-Plugin dependencies resolve by exact PluginHash.
+```text
+Plugin
+- name
+- version
+- runtime { kind, abi }
+- dependencies[] { name, version, pluginHash }
+- artifactHash
+- artifact?  # canonical Base64 storage only
+```
+
+For `js-esm` ABI v1 there is exactly one gzip executable artifact:
+
+```text
+ArtifactHash = DoubleSHA256(exact gzip artifact bytes)
+PluginHash   = DoubleSHA256(JCS(canonical Plugin identity))
+```
+
+`PluginHash` commits to `name / version / runtime / dependencies / artifactHash`. `artifact` is excluded from PluginHash, so embedded, cached, mirrored, or otherwise resolved copies of the same exact gzip bytes identify the same Plugin.
+
+There is no current `Plugin.schema`, `runtime.entry`, `files[]`, `PluginFile`, multi-file artifact map, or FileHash/path manifest. Historical CUE/schema remains Source Fact only and is not a current runtime schema.
+
+Exact chain-Plugin dependencies use `name + version + PluginHash`; dependency order is canonicalized by dependency name before JCS. Ordinary npm/pnpm/build dependencies are bundled or otherwise handled before runtime.
 
 Do not invent a second manifest/release identity for the same Plugin data.
 
 ## Embedded artifact and Asset boundary
 
-A Plugin may optionally carry its complete executable artifact in the same `Record.data = Plugin` value:
+A Plugin may optionally carry its exact executable artifact in the same `Record.data = Plugin` value:
 
 ```text
-artifact?: {
-  canonicalPath: canonicalBase64RawBytes
-}
+artifact?: canonicalBase64(exact gzip artifact bytes)
 ```
 
-`artifact` is storage/transport, not a second Plugin identity. `PluginHash` excludes the embedded storage field because `files[]` already commits transitively to exact raw bytes through FileHash.
-
-When embedded artifact is present, it must exactly cover `files[]` and its decoded bytes must match every declared size/FileHash. The same exact bytes obtained from chain data, local cache, Repo/object storage, a mirror, or another resolver verify to the same PluginHash.
+When embedded artifact is present, canonical Base64 decoding must produce bytes whose ArtifactHash equals `plugin.artifactHash`.
 
 Small and necessary Plugins should normally embed their complete executable artifact. MVP Genesis Core Plugin Records should be self-contained so a new node does not require an npm-style Plugin registry before it can obtain the code needed to interpret the chain.
 
 Large static resources such as models, images, video, maps, dictionaries, datasets, or resource packs should normally be moved to higher-level Asset/Runtime mechanisms. `core.plugin` does not depend on Asset and does not define AssetId.
 
-Build tooling may warn when executable artifact size is roughly above 500 KiB. This is engineering guidance only and must never become a Core/Block/consensus validity limit.
+Build tooling may warn when compressed executable artifact size is roughly above 500 KiB. This is engineering guidance only and must never become a Core/Block/consensus validity limit. ABI v1 separately imposes a 1 MiB decompressed runtime hard limit in the runner/loading boundary.
+
+Build, bundle, gzip, descriptor construction, reproducible-build tooling, size analysis, and release preparation belong to Plugin Dev SDK #23. Release/discovery channels belong to #24. Neither may become a runtime dependency of `core.plugin`.
 
 ## Record contract
 
@@ -136,28 +149,21 @@ Ordinary Record signatures use the fixed domain `labourchain:record:v1:` plus Re
 
 `core.record` must not resolve/execute Plugin, own Plugin state, assign business DAG semantics, or contain reusable Genesis branches.
 
-## Remaining Block and Genesis review gates
+## Block contract and Genesis review gate
 
-`core.block` and Genesis bootstrap details remain under source-first review.
+Ordinary `core.block` confirmation primitives are defined and implemented. `BlockHeader` belongs to `core.block`; ordered RecordId Merkle commitment, duplicate RecordId rejection, JCS-derived BlockId, `previousBlock`, packer identity, and domain-separated Ed25519 packer confirmation follow `docs/block.md` and `spec/core-block.md`.
 
-Do not assume these unresolved items before their dedicated review:
+Do not reopen ordinary Block identity or signature rules while working on Genesis unless #10 demonstrates a concrete bootstrap requirement.
 
-```text
-Plugin Record availability within a Block
-same-Block dependency resolution
-pre-Block Plugin snapshots
-final BlockHeader / Block identity rules
-historical Genesis RecordId / createdBy / signature exceptions
-Genesis Header / signature bootstrap rules
-```
+Genesis #10 remains the open composition review. Do not assume unresolved bootstrap details such as historical Protocol RecordId exceptions, `createdBy = "Root"`, unsigned bootstrap Plugin Records, Root Member / Genesis Repository retention, or special Genesis signature behavior. Genesis must be reviewed as composition over the already-defined ordinary Plugin / Record / Block primitives before adding exceptions.
 
-Historical source facts remain inputs to those reviews; superseded Plugin-state/S0 proposals are not implementation requirements.
+Historical source facts remain inputs to that review; superseded Plugin-state/S0 proposals are not implementation requirements.
 
 ## Identity and digest boundary
 
 Keep Entity identity distinct from cryptographic digests.
 
-Entity key encoding is owned by `core.entity`. FileHash and PluginHash are DoubleSHA256-derived digests using the representation defined by their current spec. RecordId is DoubleSHA256 over RFC 8785 JCS RawRecord bytes. RecordsRoot, Block identity, and Block signatures follow their independently reviewed specs.
+Entity key encoding is owned by `core.entity`. ArtifactHash and PluginHash are DoubleSHA256-derived lowercase-hex digests using the representation defined by their current spec. RecordId is DoubleSHA256 over RFC 8785 JCS RawRecord bytes. RecordsRoot, Block identity, and Block signatures follow their independently reviewed specs.
 
 Secret key material is local-only and must never appear in chain data.
 

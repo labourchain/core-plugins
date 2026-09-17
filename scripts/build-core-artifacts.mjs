@@ -4,26 +4,22 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { gzipSync } from 'node:zlib'
 import { build } from 'esbuild'
-import { fileHash, verifyEmbeddedArtifact } from '../lib/plugin.js'
+import { artifactHash, verifyEmbeddedArtifact } from '../lib/plugin.js'
 import { assertRuntimeSize, gunzipRuntime } from './runtime-bundle.mjs'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const OUT_DIR = join(ROOT, 'dist', 'core-artifacts')
 const VERSION = '0.1.0'
 const ABI = 1
-const RUNTIME_BUNDLE = 'runtime.mjs.gz'
 const LARGE_ARTIFACT_BYTES = 500 * 1024
-// Temporary compatibility file required by core.plugin@0.1.0. See #22.
-const COMPAT_SCHEMA = Buffer.from('{}\n', 'utf8')
 
 const CORE_PLUGINS = [
   {
     name: 'core.plugin',
     main: 'plugin.js',
     exports: [
-      'PluginArtifactError',
-      'canonicalPlugin',
-      'fileHash',
+      'PluginError',
+      'artifactHash',
       'pluginHash',
       'validatePlugin',
       'verifyArtifact',
@@ -70,10 +66,6 @@ const CORE_PLUGINS = [
   },
 ]
 
-function compareUtf8Path(left, right) {
-  return Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'))
-}
-
 async function buildRuntimeBundle(config) {
   const result = await build({
     entryPoints: [join(ROOT, 'lib', config.main)],
@@ -117,41 +109,21 @@ function canonicalGzip(bytes) {
 async function buildCorePlugin(config) {
   const runtimeBytes = await buildRuntimeBundle(config)
   const compressedRuntime = canonicalGzip(runtimeBytes)
-  const entries = [
-    { path: RUNTIME_BUNDLE, bytes: compressedRuntime },
-    { path: 'schema.json', bytes: COMPAT_SCHEMA },
-  ].sort((left, right) => compareUtf8Path(left.path, right.path))
-
-  const files = entries.map(({ path, bytes }) => ({
-    path,
-    size: bytes.byteLength,
-    hash: fileHash(bytes),
-  }))
-  const artifact = Object.fromEntries(
-    entries.map(({ path, bytes }) => [path, Buffer.from(bytes).toString('base64')]),
-  )
+  const artifact = compressedRuntime.toString('base64')
   const plugin = {
     name: config.name,
     version: VERSION,
-    runtime: { kind: 'js-esm', abi: ABI, entry: RUNTIME_BUNDLE },
-    schema: 'schema.json',
+    runtime: { kind: 'js-esm', abi: ABI },
     dependencies: [],
-    files,
+    artifactHash: artifactHash(compressedRuntime),
     artifact,
   }
 
   const pluginHash = verifyEmbeddedArtifact(plugin)
-  const artifactSize = files.reduce((total, file) => total + file.size, 0)
-  const base64Size = Object.values(artifact).reduce(
-    (total, encoded) => total + Buffer.byteLength(encoded, 'ascii'),
-    0,
-  )
   const diagnostics = {
     runtimeSize: runtimeBytes.byteLength,
-    gzipSize: compressedRuntime.byteLength,
-    artifactSize,
-    base64Size,
-    files: files.map(({ path, size }) => ({ path, size })),
+    artifactSize: compressedRuntime.byteLength,
+    base64Size: Buffer.byteLength(artifact, 'ascii'),
   }
   return { pluginHash, plugin, diagnostics }
 }
@@ -159,11 +131,10 @@ async function buildCorePlugin(config) {
 async function smokeLoad(config, built) {
   const root = await mkdtemp(join(tmpdir(), 'labourchain-core-plugin-'))
   try {
-    const encodedBundle = built.plugin.artifact?.[RUNTIME_BUNDLE]
-    if (encodedBundle === undefined) {
-      throw new Error(`${config.name} artifact is missing ${RUNTIME_BUNDLE}`)
+    if (built.plugin.artifact === undefined) {
+      throw new Error(`${config.name} artifact is missing`)
     }
-    const runtimeBytes = gunzipRuntime(Buffer.from(encodedBundle, 'base64'))
+    const runtimeBytes = gunzipRuntime(Buffer.from(built.plugin.artifact, 'base64'))
     const runtimePath = join(root, 'runtime.mjs')
     await writeFile(runtimePath, runtimeBytes)
 
@@ -191,11 +162,10 @@ async function main() {
     await smokeLoad(config, built)
     await writeFile(join(OUT_DIR, `${config.name}.json`), `${JSON.stringify(built, null, 2)}\n`)
 
-    const { runtimeSize, gzipSize, artifactSize, base64Size, files } = built.diagnostics
+    const { runtimeSize, artifactSize, base64Size } = built.diagnostics
     console.log(
-      `${config.name} ${built.pluginHash} runtime=${kib(runtimeSize)} KiB gzip=${kib(gzipSize)} KiB artifact=${kib(artifactSize)} KiB base64=${kib(base64Size)} KiB`,
+      `${config.name} ${built.pluginHash} runtime=${kib(runtimeSize)} KiB artifact=${kib(artifactSize)} KiB base64=${kib(base64Size)} KiB`,
     )
-    console.log(`  ${files.map((file) => `${file.path}=${kib(file.size)} KiB`).join(' ')}`)
     if (artifactSize > LARGE_ARTIFACT_BYTES) {
       console.warn(`${config.name}: large executable artifact; consider moving static resources to Assets`)
     }

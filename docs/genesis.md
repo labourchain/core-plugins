@@ -1,8 +1,6 @@
 # Genesis
 
-本文记录 Genesis 当前已经确认的迁移边界。普通 `core.record` contract 已固定；Genesis RecordId/createdBy/signature 是否继续保留历史 bootstrap 特例，以及 BlockHeader/Block identity，仍由 Genesis / `core.block` 审查依据旧 Service 逐项确定。
-
-历史事实依据见 [`source-baseline.md`](source-baseline.md)。
+本文记录 Genesis 当前已经确认的迁移边界。历史事实依据见 [`source-baseline.md`](source-baseline.md)。
 
 ## Source Fact
 
@@ -14,20 +12,13 @@ Block
 └── Records[]
 ```
 
-脚本先把每个系统 `Protocol` 构造成：
-
-```text
-Record
-└── data = Protocol
-```
-
-再把 Root Member、Genesis Repository 等其他事实也构造成 Records，最后统一计算 Record IDs / Merkle root 并写入 Genesis Block。
+脚本先把系统 `Protocol` 构造成普通 Record data，再把 Root Member、Genesis Repository 等其他事实也构造成 Records，最后统一进入 Genesis Block。
 
 因此旧实现不存在独立于 Record/Block 的 `GenesisManifest + S0 Plugin artifact set` 数据通路。
 
 ## Current migration
 
-当前迁移保留这个结构原则：
+当前保留这个结构：
 
 ```mermaid
 flowchart TB
@@ -40,9 +31,7 @@ flowchart TB
     ER --> G
 ```
 
-`Protocol -> Plugin` 的变化由 `core.plugin` 定义；Genesis 仍通过通用 Record/Block 容器承载这些数据。
-
-初始 Core Plugin 包括：
+初始 Core Plugins：
 
 ```text
 core.plugin
@@ -57,7 +46,7 @@ core.block
 
 新节点必须能够取得解释 Genesis 和后续链数据所需的 Core executable content。
 
-MVP 不要求先建立独立 Plugin registry。初始 Core Plugin Records 应携带各自完整的 embedded artifact：
+MVP 不要求先建立独立 Plugin registry。初始 Core Plugin Records 应携带各自完整 embedded gzip artifact：
 
 ```text
 Genesis Block
@@ -68,23 +57,29 @@ Genesis Block
     └── core.block + artifact
 ```
 
-每个 embedded artifact 都按 `core.plugin` 规则验证：
+每个 embedded artifact 按当前 `core.plugin` 规则验证：
 
 ```text
-Base64 decode
--> exact file set
--> size
--> FileHash
+canonical Base64 decode
+-> exact gzip artifact bytes
+-> ArtifactHash
 -> PluginHash
 ```
 
-因此节点可以从 Genesis/链数据恢复 Core runtime bytes，验证后写入本地 cache 并继续运行。
+然后 runner：
 
-这不是第二种 Genesis 数据结构。artifact 仍然只是 `Record.data = Plugin` 中的可选内容字段。
+```text
+bounded gunzip (<= 1 MiB)
+-> import ESM
+```
+
+节点因此可以从 Genesis / 链数据恢复 Core runtime bytes，验证后缓存并继续运行。
+
+`artifact` 仍只是 `Record.data = Plugin` 中的可选 storage 字段，不形成第二套 Genesis 数据结构，也不进入 PluginHash。
 
 ## Ordinary Record contract
 
-普通 Record 当前固定为：
+普通 Record：
 
 ```text
 RawRecord = plugin / pluginHash / createdBy / createdAt / data
@@ -95,11 +90,11 @@ signature = domain-separated Ed25519 signature over RecordId
 
 `core.record` 本身不包含 `if genesis` 分支。
 
-历史 Genesis 中出现的特殊 Record 行为继续作为 bootstrap Source Facts 单独审查，而不进入普通 Record reusable API。
+历史 Genesis 中出现的特殊 Record 行为继续作为 bootstrap Source Facts 单独审查，而不进入 ordinary Record reusable API。
 
 ## External distribution remains optional
 
-未来仍可以存在：
+未来可以存在：
 
 ```text
 Plugin registry
@@ -109,21 +104,23 @@ P2P artifact distribution
 local cache
 ```
 
-这些机制可以提高下载速度、冗余或历史可获得性，但相同 artifact bytes 必须验证到同一个 FileHash/PluginHash。
-
-对 MVP bootstrap 而言，它们不是节点启动的前置依赖。
+但相同 exact gzip artifact bytes 必须验证到同一个 ArtifactHash / PluginHash。对 MVP bootstrap 而言，这些渠道不是节点启动前置依赖。
 
 ## Large resources
 
-初始 Core Plugins 应保持 executable artifact 小而自包含。大型静态数据不应因为“Core Plugin 需要使用”就自动塞进 Genesis。
+初始 Core Plugins 应保持 executable artifact 小而自包含。大型模型、数据集、图片、地图、词典等内容应优先作为 Asset / Runtime 资源，而不是塞进 Genesis Plugin artifact。
 
-大型模型、数据集、图片、地图、词典等内容应优先作为上层 Asset/Runtime 资源，在实际运行时按需要取得。
+```text
+compressed artifact > ~500 KiB
+-> Dev SDK/build warning only
 
-构建工具约 500 KiB 的 bundle warning 只用于发现不合理的大型 executable artifact，不改变 Genesis 或 Block validity。
+uncompressed runtime > 1 MiB
+-> ABI v1 hard reject
+```
 
 ## Bootstrap Source Facts
 
-旧代码中存在若干 Genesis-specific 行为，例如：
+旧代码存在若干 Genesis-specific 行为，例如：
 
 ```text
 Protocol Record.id 直接使用 ProtocolHash
@@ -135,7 +132,7 @@ Genesis Repository 作为 packer
 Genesis Header 使用当时的特殊签名流程
 ```
 
-这些事实与当前普通 Record contract 不一致并不意味着普通 `core.record` 需要兼容分支。Genesis review 需要逐项决定哪些行为继续作为当前 bootstrap exception，哪些只保留为历史事实。
+这些事实与当前 ordinary Record contract 不一致并不意味着 `core.record` 需要兼容分支。Genesis #10 需要逐项决定哪些继续作为当前 bootstrap exception，哪些只保留为历史事实。
 
 ## Current boundary
 
@@ -147,17 +144,18 @@ Genesis is Block
 Genesis contains Records
 ordinary RecordId uses JCS(RawRecord)
 ordinary Record signature uses current core.record contract
-PluginHash identity is independent of artifact storage location
+PluginHash commits to ArtifactHash
+embedded artifact storage does not change PluginHash
 MVP Core bootstrap does not require an external Plugin registry
 ```
 
 尚未冻结：
 
 ```text
-Genesis BlockId / GenesisId 的最终算法
-历史 Protocol Record.id = ProtocolHash 特例是否继续保留
-bootstrap createdBy = "Root" 是否继续保留
+Genesis BlockId / GenesisId 最终组合
+历史 Protocol Record.id = ProtocolHash 特例是否继续
+bootstrap createdBy = "Root" 是否继续
 bootstrap Record signature 是否继续例外
-Genesis Header 的当前字段与签名规则
+Genesis Header 当前字段与签名规则
 Root Member / Genesis Repository 是否继续保留
 ```

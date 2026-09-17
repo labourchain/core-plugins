@@ -1,207 +1,102 @@
 # `core.plugin` Specification
 
-Status: defined for Plugin data, executable artifact identity, optional chain-embedded artifact bytes, canonicalization, and runtime artifact verification.
+Status: defined for single-artifact executable Plugin identity and runtime verification.
 
 ## Source
 
-Historical source:
+Historical source facts remain in `docs/source-baseline.md`. Current design source:
 
-- `Ri0n72Y/blockchain-service/schemas/system/sys_protocol_v1.cue`
-- `Ri0n72Y/blockchain-service/lib/model/types.go`
-- `Ri0n72Y/blockchain-service/cmd/script/main.go::calcProtocolID`
-- `Ri0n72Y/blockchain-service/cmd/script/main.go` Genesis construction
-
-Current design source:
-
-- `docs/source-baseline.md`
 - `docs/architecture.md`
 - `docs/plugin.md`
+- `docs/runtime-abi.md`
 - `docs/genesis.md`
-
-The migration rule is source-first: preserve the old Service structure unless executable Plugin requirements force a change.
 
 Historical `Protocol` is replaced by `Plugin`; there is no parallel Protocol entity.
 
 ## Responsibility
 
-`core.plugin` defines the `Plugin` data carried by `Record.data` and deterministic validation over that data and its executable artifact bytes.
-
-It does not define a separate Plugin release entity or state machine.
+`core.plugin` defines the Plugin data carried by `Record.data`, deterministic Plugin identity, exact executable artifact identity, and runtime verification primitives.
 
 Out of scope:
 
 ```text
-Repository / Member issuer rules
+Plugin build/bundle/gzip tooling
 SDK / CLI / publishing implementation
-release authorization
-activation / recommendation / deprecation / abandonment
-packer or network policy
-Core Profile / distribution selection
-artifact registry/cache/storage implementation
+release/discovery metadata
+Repository / Member issuer rules
+activation / recommendation / deprecation
+registry/cache/storage implementation
 Asset implementation
 source/build provenance
 Record/Block ordering rules
+lifecycle/RPC/Cordis Context policy
 ```
-
-## Source-aligned Record relation
-
-Historical Service:
-
-```text
-Record.data = Protocol
-```
-
-Current migration:
-
-```text
-Record.data = Plugin
-```
-
-A Plugin chain fact is therefore an ordinary Record interpreted by the relevant `core.plugin` version. Common Record identity/signature and Block confirmation belong to `core.record` / `core.block`.
 
 ## Public data model
 
-The implementation must expose equivalents of:
-
 ```ts
-interface Plugin {
-  name: string
-  version: string
-  runtime: {
-    kind: 'js-esm'
-    abi: number
-    entry: string
-  }
-  schema: string
-  dependencies: PluginDependency[]
-  files: PluginFile[]
-  artifact?: PluginArtifact
+export type ArtifactHash = string
+export type PluginHash = string
+
+export interface PluginRuntime {
+  kind: 'js-esm'
+  abi: number
 }
 
-interface PluginDependency {
+export interface PluginDependency {
   name: string
   version: string
   pluginHash: PluginHash
 }
 
-interface PluginFile {
-  path: string
-  size: number
-  hash: FileHash
+export interface Plugin {
+  name: string
+  version: string
+  runtime: PluginRuntime
+  dependencies: PluginDependency[]
+  artifactHash: ArtifactHash
+  artifact?: string
 }
-
-type PluginArtifact = Record<string, string>
-type PluginHash = string
-type FileHash = string
 ```
 
-`PluginArtifact` maps canonical artifact path to canonical RFC 4648 Base64 text representing raw file bytes.
+`artifact` is optional canonical RFC 4648 Base64 of the exact gzip executable bytes. It is storage only and is excluded from PluginHash.
 
-`PluginHash` and `FileHash` are 32-byte DoubleSHA256 digests serialized as 64-character lowercase hexadecimal strings.
-
-`Plugin` is the public data type. `PluginManifest` or `PluginRelease` must not exist as a second public entity for the same logical data.
+No `schema`, `runtime.entry`, `files[]`, `PluginFile`, multi-file artifact map, or FileHash path/manifest model remains in the current Plugin type.
 
 ## Structural trust boundary
 
 Plugin data is chain-facing deterministic data, not arbitrary JavaScript object state.
 
-For `Plugin`, `runtime`, each dependency, each file descriptor, and embedded `artifact` objects, validation requires plain objects whose present fields are enumerable own data properties. Reject class/host instances, accessors, symbol-keyed properties, hidden/non-enumerable fields, and unknown fields.
+For `Plugin`, `runtime`, and each dependency, validation requires plain objects whose fields are enumerable own data properties. Reject class/host instances, accessors, symbol-keyed fields, hidden/non-enumerable fields, unknown fields, or missing fields.
 
-`dependencies[]` and `files[]` must be dense ordinary arrays without extra/symbol properties or accessor elements. Sparse arrays are invalid even if their visible indexed values would otherwise appear equivalent after JavaScript iteration.
+`dependencies[]` MUST be a dense ordinary array without extra/symbol properties or accessor elements. Sparse arrays and Array subclasses are invalid.
 
-These checks prevent non-JSON JavaScript structures from collapsing into different canonical bytes and are part of the trust boundary, not optional style validation.
+These checks are part of canonical identity safety, not style validation.
 
-## Protocol migration
+## Name and version
 
-Historical fields map as follows:
-
-```text
-protocolId   -> name
-version      -> version
-schema text  -> schema artifact path
-package      -> removed
-contributors -> removed from Plugin runtime data
-description  -> removed from Plugin runtime data
-```
-
-New executable-Plugin fields:
-
-```text
-runtime
-dependencies
-files
-artifact?
-```
-
-`artifact?` is storage/transport for exact bytes already committed by `files[]`; it is not a second content identity.
-
-## Required executable capabilities
-
-`core.plugin` must provide deterministic equivalents of:
-
-```text
-validatePlugin(plugin)
-canonicalPlugin(plugin)
-fileHash(bytes)
-pluginHash(plugin)
-verifyArtifact(plugin, files, expectedPluginHash?)
-verifyEmbeddedArtifact(plugin, expectedPluginHash?)
-```
-
-Low-level hash/JCS/path/Base64 helper functions need not be public Plugin API.
-
-## Plugin name grammar
-
-Plugin and dependency names match exactly:
+Plugin/dependency names MUST match:
 
 ```regex
 ^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$
 ```
 
-Accepted:
-
-```text
-core.plugin
-repo.asset
-work.labour
-labour-flow.record-v2
-```
-
-Rejected:
-
-```text
-core
-Core.plugin
-core plugin
-core@plugin
-core..plugin
-```
-
-## Version grammar
-
-Plugin and dependency versions are exact SemVer 2.0.0 versions. Range/tag/workspace resolution is not part of Plugin identity.
+Plugin/dependency versions MUST be exact SemVer 2.0.0 values. Ranges, tags, workspace references, or leading `v` are invalid.
 
 ## Runtime descriptor
 
 ```text
 runtime.kind = "js-esm"
-runtime.abi = positive IEEE-754 safe integer
-runtime.entry = canonical artifact path
+runtime.abi = positive safe integer
 ```
 
-`runtime.entry` must resolve to a declared `files[]` entry.
+ABI v1 consumes exactly one verified gzip artifact. There is no entry path because there is no multi-file runtime artifact.
 
-ABI identifies LabourChain Plugin runner ABI, not Node/Cordis/deployment versions.
-
-## Schema
-
-`schema` is a canonical artifact path and must resolve to a declared `files[]` entry.
-
-Historical Protocol stored inline CUE schema text. Current Plugin commits to exact raw schema bytes through `files[]` / FileHash, so raw formatting/comment changes change PluginHash.
+A validator MAY accept future positive ABI numbers as structurally valid Plugin data; the runner/composition layer is responsible for rejecting unsupported ABI values before execution.
 
 ## Dependencies
 
-Each chain Plugin runtime dependency contains exactly:
+Each chain-level runtime dependency contains exactly:
 
 ```text
 name
@@ -209,226 +104,116 @@ version
 pluginHash
 ```
 
-Dependency name must be unique inside one Plugin. `dependencies[]` is semantically set-like; Core sorts a validated copy by dependency `name` using UTF-8 lexical order before JCS serialization.
+`pluginHash` MUST be a 64-character lowercase hexadecimal DoubleSHA256 digest and is the authoritative identity.
 
-Ordinary npm/pnpm/build dependencies are bundled/handled before runtime. `core.plugin` does not fetch, activate, authorize or lifecycle-manage dependencies.
+Dependency names MUST be unique within one Plugin. `dependencies[]` is semantically set-like; validation returns a copy sorted by dependency `name` using UTF-8 byte order before PluginHash serialization.
 
-## Artifact file descriptors
+Ordinary npm/pnpm/build dependencies are not Plugin dependencies. Build tooling SHOULD bundle normal source dependencies unless they intentionally remain independently resolved chain Plugins.
 
-Each `files[]` entry contains exactly:
-
-```text
-path
-size
-hash
-```
-
-`path` is UTF-8, case-sensitive, canonical relative POSIX form using `/` and valid Unicode scalar data.
-
-Reject absolute/empty paths, `.` or `..` segments, backslashes, NUL, empty segments, and lone surrogate/invalid Unicode.
-
-File paths must be unique.
-
-`size` is a non-negative safe integer; negative zero is invalid.
+## ArtifactHash
 
 ```text
-FileHash = DoubleSHA256(raw file bytes)
+ArtifactHash = DoubleSHA256(exact artifact bytes)
 ```
 
-`files[]` is semantically set-like. Core sorts a validated copy by canonical path using UTF-8 lexical order before JCS serialization.
+For `js-esm` ABI v1, the exact artifact bytes are the gzip-compressed ESM bundle bytes that are published, embedded, mirrored, cached, and downloaded.
 
-Archive/compression/host metadata is excluded from Plugin identity.
+`ArtifactHash` MUST be serialized as 64-character lowercase hexadecimal.
+
+Compression metadata is therefore part of exact artifact bytes. Current Core build tooling normalizes gzip metadata, but reproducible construction belongs to Plugin Dev SDK #23, not to `core.plugin` runtime verification.
 
 ## Embedded artifact
 
-`artifact` is optional. When present it is a plain data object:
+`artifact` is optional. When present:
 
-```text
-canonical path -> canonical RFC 4648 Base64
-```
+1. it MUST be a string;
+2. it MUST be canonical RFC 4648 Base64 using the standard alphabet and padding;
+3. decode + re-encode MUST reproduce the exact input string;
+4. `artifactHash(decodedBytes)` MUST equal `Plugin.artifactHash`.
 
-Requirements:
-
-1. `artifact` must be a plain object, not an array/null/class/accessor-backed object;
-2. every key must be a canonical artifact path;
-3. every key must correspond to exactly one `files[]` descriptor;
-4. the object must contain exactly the complete `files[]` path set;
-5. every value must be canonical RFC 4648 Base64 with standard alphabet and padding;
-6. decoding and re-encoding the bytes must reproduce the exact input Base64 string;
-7. decoded byte length must equal descriptor `size`;
-8. `fileHash(decodedBytes)` must equal descriptor `hash`.
-
-Empty files use the canonical Base64 empty string `""`.
-
-An embedded artifact with missing/extra paths, alternate/noncanonical Base64, wrong size or wrong FileHash is invalid Plugin data.
-
-## Canonical Plugin identity
-
-`canonicalPlugin(plugin)` canonicalizes the **identity form** of Plugin.
-
-It must:
-
-1. validate the complete Plugin shape, including optional embedded artifact if present;
-2. reject non-plain objects, sparse/extended arrays, accessors, symbol-keyed or hidden data;
-3. reject duplicate dependency names/file paths;
-4. sort `dependencies[]` by dependency name;
-5. sort `files[]` by path;
-6. omit the `artifact` storage field from the identity form;
-7. serialize the remaining Plugin descriptor using RFC 8785 JCS;
-8. return exact UTF-8 canonical bytes.
-
-Therefore:
-
-```text
-Plugin with correct embedded artifact
-Plugin with artifact omitted
-```
-
-must produce identical canonical Plugin bytes and identical PluginHash when all identity descriptors are equal.
-
-Object input property order and dependency/file input order have no identity meaning.
-
-Unknown Plugin fields are invalid in `core.plugin@0.1.0`.
+Embedding does not change PluginHash. The same exact gzip bytes may be embedded in Record data, resolved from cache, mirror, registry, or other distribution channel and still identify the same Plugin.
 
 ## PluginHash
 
-```text
-PluginHash = DoubleSHA256(canonicalPlugin(plugin))
-```
-
-PluginHash directly commits to:
+After validation:
 
 ```text
-name / version
-runtime kind / ABI / entry
-schema path
-exact dependency identities
-file paths
-file sizes
-FileHash values
+identity = {
+  name,
+  version,
+  runtime,
+  dependencies: dependencies sorted by UTF-8 name,
+  artifactHash
+}
+
+PluginHash = DoubleSHA256(UTF8(JCS(identity)))
 ```
 
-Every FileHash commits to raw file bytes, so PluginHash transitively commits to exact executable content without hashing the embedded Base64 transport representation itself.
+`artifact` MUST be excluded from identity.
 
-Changing artifact storage location or adding/removing a correct embedded representation must not change PluginHash.
+JCS MUST follow the repository's existing RFC 8785/I-JSON rules, including valid Unicode scalar data and rejection of invalid numeric data such as non-finite numbers or negative zero where applicable.
 
-Changing actual executable bytes requires a changed FileHash and therefore changes PluginHash.
+## Public runtime API
 
-## External artifact verification
-
-`verifyArtifact(plugin, files, expectedPluginHash?)` receives actual file bytes explicitly.
-
-It must:
-
-1. validate Plugin data;
-2. require exactly the declared logical file set;
-3. validate supplied paths;
-4. compare declared size with actual byte length;
-5. calculate/compare each FileHash;
-6. calculate PluginHash from canonical identity data;
-7. validate/compare optional `expectedPluginHash`;
-8. return the calculated PluginHash.
-
-It performs no hidden source clone, build, package-manager install, persistence or network fetch.
-
-## Embedded artifact verification
-
-`verifyEmbeddedArtifact(plugin, expectedPluginHash?)` requires `plugin.artifact` to exist.
-
-Complete embedded file-set/Base64/size/FileHash validation is already part of `validatePlugin()`. `verifyEmbeddedArtifact()` must apply that complete validation, require the artifact to be present, derive PluginHash from the validated identity form, compare optional `expectedPluginHash`, and return the calculated PluginHash.
-
-The implementation should not decode/hash the same embedded bytes a second time merely to duplicate checks already completed by `validatePlugin()`.
-
-If `artifact` is absent, `verifyEmbeddedArtifact()` rejects with an explicit missing-artifact error; the caller may instead resolve bytes externally and call `verifyArtifact()`.
-
-## Artifact and Asset boundary
-
-Executable artifact files are only the files required to load/run the Plugin and its schema/runtime behavior.
-
-Large static resources such as models, images, video, maps, dictionaries, datasets or game resource packs should normally be represented by higher-level Asset/Runtime mechanisms and fetched by the running Plugin when needed.
-
-`core.plugin` does not contain Asset identifiers or an Asset resolver.
-
-## Bundle-size tooling guidance
-
-Plugin build tooling should report total raw executable artifact size:
+The public `core.plugin` API MUST be limited to:
 
 ```text
-sum(files[].size)
+PluginError
+validatePlugin(plugin)
+artifactHash(bytes)
+pluginHash(plugin)
+verifyArtifact(plugin, artifactBytes, expectedPluginHash?)
+verifyEmbeddedArtifact(plugin, expectedPluginHash?)
 ```
 
-Tooling should warn around **500 KiB** and suggest moving large static content to Assets.
+`canonicalPlugin`, low-level JCS serialization, identity-construction helpers, build manifest helpers, and package construction helpers MUST NOT be public runtime API.
 
-This threshold is non-normative for consensus validity. `validatePlugin`, `verifyArtifact`, Block validation and network consensus must not reject a Plugin solely because it is larger than 500 KiB.
+`artifactHash()` remains public because exact artifact hashing is itself a runtime verification primitive and may be reused by Plugin Dev SDK #23 without duplicating the protocol algorithm.
 
-## Public API boundary
+## Verification semantics
 
-Package root should expose only Plugin data/types, validation/hash/artifact-verification capabilities, and the error type needed to consume them.
+`validatePlugin(plugin)` MUST:
 
-Implementation helpers such as raw DoubleSHA256, JCS recursion, Base64 parsing, path assertions, UTF ordering or Unicode scanning remain internal unless another Core spec establishes a shared primitive API.
+- validate exact shape and structural trust boundary;
+- validate name/version/runtime/dependencies/digests;
+- normalize dependency ordering in its returned value;
+- when `artifact` exists, validate canonical Base64 and ArtifactHash.
 
-## Genesis relation
+`pluginHash(plugin)` MUST validate the Plugin and return the canonical PluginHash.
 
-Genesis remains a Block containing Records. Initial Plugin data remains `Record.data = Plugin`.
+`verifyArtifact(plugin, bytes, expectedPluginHash?)` MUST:
 
-For the MVP, the initial Core Plugin Records for:
+1. validate the Plugin;
+2. require `bytes` to be a `Uint8Array`;
+3. require `artifactHash(bytes) === plugin.artifactHash`;
+4. calculate PluginHash;
+5. if `expectedPluginHash` is supplied, validate its digest form and require exact equality;
+6. return the calculated PluginHash.
 
-```text
-core.plugin
-core.record
-core.entity
-core.block
-```
+`verifyEmbeddedArtifact(plugin, expectedPluginHash?)` MUST:
 
-must/shall be constructed with complete embedded artifacts by the Genesis/bootstrap implementation so a node can obtain Core executable content without an external Plugin registry.
+1. validate the Plugin and its optional embedded artifact;
+2. require embedded `artifact` to exist;
+3. calculate PluginHash;
+4. optionally compare expected PluginHash;
+5. return the calculated PluginHash.
 
-This requirement does not create an independent `S0` artifact-set format. The bytes remain part of each Plugin Record's data.
+Malformed data MUST throw `PluginError`. There is no boolean soft-failure path for malformed identity/artifact data.
 
-Exact Genesis RecordId/signature/Header behavior remains deferred to its dedicated review.
+## Runtime artifact size
 
-## Failure cases
+`core.plugin` MUST NOT reject an artifact merely because compressed bytes exceed an engineering threshold. The approximately 500 KiB compressed-size warning belongs to Dev SDK/build tooling.
 
-Reject at least:
+`js-esm` ABI v1's 1 MiB decompressed runtime hard limit belongs to runner/runtime loading and is defined in `core-runtime-abi.md`; it is not an `artifactHash()` or Plugin descriptor-size rule.
 
-- non-plain or unknown/missing Plugin fields;
-- class/host/accessor/symbol/non-enumerable Plugin structures;
-- sparse or extended dependency/file arrays;
-- invalid Plugin/dependency name or version;
-- malformed runtime descriptor;
-- invalid schema/runtime/file path or Unicode;
-- duplicate dependency name/file path;
-- unsafe ABI/file size or negative-zero size;
-- malformed dependency PluginHash;
-- missing runtime entry/schema descriptor;
-- malformed embedded artifact object;
-- missing/extra embedded artifact path;
-- noncanonical Base64;
-- embedded decoded size/FileHash mismatch;
-- external artifact file-set/size/FileHash mismatch;
-- optional expected PluginHash mismatch.
+## Distribution and metadata boundary
 
-Do not reject only because dependency/file input arrays are not pre-sorted or because artifact size exceeds the tooling warning threshold.
+Human description, release notes, source URLs, package-manager metadata, registry/discovery metadata, build inputs, and reproducible-build provenance MUST NOT be added to Plugin runtime identity merely because they accompany a release.
 
-## Tests
+Plugin Dev SDK is #23. Release/distribution channels are #24.
 
-Meaningful tests must cover:
+## Genesis boundary
 
-- fixed FileHash/JCS/PluginHash fixture remains stable;
-- PluginHash equality with embedded artifact present vs omitted;
-- canonical Base64 embedded artifact success;
-- embedded exact file-set enforcement;
-- embedded noncanonical/malformed Base64 rejection;
-- embedded byte size/FileHash mismatch rejection;
-- `verifyEmbeddedArtifact()` success, invalid embedded-data rejection and missing-artifact rejection;
-- external `verifyArtifact()` behavior remains equivalent;
-- plain-object/data-property trust boundary;
-- sparse/extended dependency/file array rejection;
-- object-property and dependency/file input order independence;
-- duplicate dependency/file rejection;
-- name/version/path/Unicode/numeric constraints;
-- runtime entry/schema existence;
-- executable byte/path/size mutation affecting PluginHash;
-- no 500 KiB validity rejection;
-- no artificial `core.record` / `core.entity` dependency in the `core.plugin` fixture.
+Initial Core Plugins may carry embedded gzip artifacts so Genesis/bootstrap does not require an external registry. `core.plugin` defines no Genesis-specific validity path; Genesis #10 composes ordinary Plugin/Record/Block primitives.
 
-Tests must not cover Plugin issuer, release state, activation, lifecycle policy, Core Profile, Asset implementation, SDK or network governance as `core.plugin` behavior.
+PluginHash fixtures MUST be intentionally updated by #22 before Genesis #10 freezes Core Plugin identities.
