@@ -13,10 +13,10 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const OUT_DIR = join(ROOT, 'dist', 'core-artifacts')
 const EXPECTED_NAMES = ['core.protocol', 'core.entity', 'core.record', 'core.block']
 const EXPECTED_PROTOCOL_HASHES = {
-  'core.protocol': 'c2647d5aaabba0abb62f966b761e8d489437da161cd339248ebd5e92d56692f9',
-  'core.entity': 'd97f94cdabe8d8d78d1dace32ddb94549c17ccff493ac7d94dab814f47d4e1b8',
-  'core.record': '6fdfddb893037d29ff5c485badcf449f1c20941d53cde2ebbaf5705ed117a8d0',
-  'core.block': 'c4233c8370a86d37bf368756fd9056b348d615c0e4f1691cae53eea46137c9c8',
+  'core.protocol': '19b39e1f09682fed5b8648835a6c0dc9753ed0b60d9efc9397388a2ee9dfb198',
+  'core.entity': 'c507745d8e17760f25d852f3889381ca9053b0197f418bdc0f0a5e9e0f19ae9c',
+  'core.record': '752efeba281ee962b87f6fa69623c8e207dbed5f3a695cfc6871c9fc8a841df1',
+  'core.block': '38b014b8ad973246985ec91e5d1aa1d53b752c37ecc0c35a16d084d35598e9d8',
 }
 
 async function importRuntime(name, protocolHash, runtimeBytes) {
