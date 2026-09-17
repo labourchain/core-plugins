@@ -1,16 +1,16 @@
 export {
-  PluginError,
+  ProtocolError,
   artifactHash,
-  pluginHash,
-  validatePlugin,
+  protocolHash,
+  validateProtocol,
   verifyArtifact,
   verifyEmbeddedArtifact,
   type ArtifactHash,
-  type Plugin,
-  type PluginDependency,
-  type PluginHash,
-  type PluginRuntime,
-} from './plugin.js'
+  type Protocol,
+  type ProtocolDependency,
+  type ProtocolHash,
+  type ProtocolRuntime,
+} from './protocol.js'
 
 export {
   EntityError,
