@@ -74,14 +74,17 @@ runtime.abi = 1
 ```ts
 export const plugin = {
   name: '<protocol-name>@<version>',
+  provide: 'protocol:<protocol-name>@<version>',
   inject: [],
   apply(ctx) {
-    // expose the Protocol implementation through Cordis
+    ctx.provide('protocol:<protocol-name>@<version>', implementation)
   },
 }
 ```
 
-该 `plugin` 是 Cordis object Plugin，由 Host 直接交给 `ctx.plugin()`。Protocol capability 通过 Cordis Service / Context API 暴露，而不是通过任意 module exports 暴露。
+该 `plugin` 是 Cordis object Plugin，由 Host 直接交给 `ctx.plugin()`。ABI v1 使用 Cordis 原生 `name` / `provide` / `inject` metadata 显式声明 runtime identity、提供能力和依赖；`apply()` 再通过 `ctx.provide()` 实际注册 capability，使其归当前 Fiber 生命周期管理。
+
+Protocol capability 不通过任意 module exports 暴露。
 
 因此 Protocol artifact 的交付边界是：
 
@@ -192,12 +195,15 @@ import * as api from './implementation.js'
 
 export const plugin = {
   name: 'core.record@0.1.0',
+  provide: 'protocol:core.record@0.1.0',
   inject: [],
   apply(ctx) {
     ctx.provide('protocol:core.record@0.1.0', api)
   },
 }
 ```
+
+`plugin.provide` 是声明；`ctx.provide()` 是实际 service 注册。ABI/build/Node validation 应要求两者都指向同一个 canonical Protocol service key。
 
 该 service key 不包含自身 ProtocolHash，避免 executable bytes 内嵌自身 hash 导致自引用。Host 在 mount 前已经知道并验证 descriptor 的 exact ProtocolHash，并负责拒绝同一 isolation scope 内相同 `name@version` 对应多个不同 ProtocolHash 的歧义。
 
@@ -239,7 +245,7 @@ verifyEmbeddedArtifact(protocol, expectedProtocolHash?)
 - `verifyArtifact()` 验证外部取得的 exact artifact bytes；
 - `verifyEmbeddedArtifact()` 验证 Protocol 自带的 embedded artifact。
 
-`core.protocol` 不负责 ESM import、`plugin` shape、`plugin.inject` projection、`ctx.plugin()`、dependency availability 或 Fiber lifecycle。
+`core.protocol` 不负责 ESM import、`plugin` shape、`plugin.provide`、`plugin.inject` projection、`ctx.plugin()`、dependency availability 或 Fiber lifecycle。
 
 ## Build / distribution boundary
 
@@ -251,6 +257,7 @@ source
 -> thin Cordis Plugin wrapper
 -> single ESM
 -> validate explicit plugin export
+-> validate name/provide/inject/apply runtime contract
 -> validate dependencies -> inject projection
 -> deterministic gzip
 -> ArtifactHash / ProtocolHash
@@ -263,7 +270,7 @@ resolve exact bytes
 -> verify Protocol/artifact identity through core.protocol
 -> bounded gunzip
 -> import
--> validate explicit plugin export
+-> validate explicit plugin export/runtime contract
 -> validate dependencies -> inject projection
 -> resolve exact dependency ProtocolHashes
 -> mount through Host Cordis
