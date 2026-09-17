@@ -70,7 +70,9 @@ Genesis Block
     └── core.block + artifact
 ```
 
-每个 embedded artifact 按当前 `core.protocol` 规则验证：
+这些 embedded bytes 已经是最终 `cordis-js-esm` executable artifact，不是等待节点再次构建的源码包。
+
+每个 embedded artifact 按当前 `core.protocol` / runtime ABI 规则消费：
 
 ```text
 canonical Base64 decode
@@ -79,26 +81,54 @@ canonical Base64 decode
 -> ProtocolHash
 -> bounded gunzip (<= 1 MiB)
 -> import ESM
+-> validate explicit `plugin`
+-> validate semantic dependency projection
+-> mount through Host Cordis
 ```
 
 `artifact` 仍只是 `Record.data = Protocol` 中的可选 storage 字段，不形成第二套 Genesis 数据结构，也不进入 ProtocolHash。
 
-Protocol implementation 与 Cordis Plugin runtime 的最终挂载关系由独立 runtime-alignment review 处理；Genesis 不自行发明另一套 loader/lifecycle。
+Genesis 不自行发明 loader、package installer 或 Plugin lifecycle；Protocol implementation 的挂载统一使用 Host Cordis。
 
 ## Bootstrap trust boundary
 
 Genesis 携带 Core Protocol artifact，并不意味着一个新节点可以在完全没有内置逻辑的情况下验证自己的第一个 Genesis。
 
-节点仍需要随程序分发一份最小可信 bootstrap verifier，能够在加载链内 Core Protocol artifact 之前解析和验证当前 ordinary Protocol / Record / Block contract。
+节点仍需要随程序分发一份最小可信 bootstrap verifier，能够在加载链内 Core Protocol artifact 之前解析和验证当前 ordinary Protocol / Record / Block contract，并具备 `cordis-js-esm` 的最小加载能力。
 
 Genesis-carried artifacts 的作用是：
 
 ```text
-提供 exact executable chain content
+提供 exact ready-to-mount executable chain content
 + 支持后续恢复 / 缓存 / 再验证
 ```
 
-它们不替代首次启动时已经随节点交付的最小 verifier。
+它们不替代首次启动时已经随节点交付的最小 verifier / Host runtime。
+
+## Node 不在 Genesis 时重新构建 Protocol
+
+Genesis bootstrap 的 Node 工作是加载，不是 build：
+
+```text
+resolve embedded bytes
+-> verify
+-> bounded gunzip
+-> import
+-> validate plugin
+-> mount
+```
+
+Node 不执行：
+
+```text
+TypeScript compile
+source transpile
+npm install
+install scripts
+Protocol rebundle
+```
+
+因此不同节点解释同一 Genesis 时依赖同一 exact executable bytes，而不是各自在本地工具链中重建 Core Protocol。
 
 ## Deterministic composition
 
@@ -137,7 +167,9 @@ P2P artifact distribution
 local cache
 ```
 
-但相同 exact gzip artifact bytes 必须验证到同一个 ArtifactHash / ProtocolHash。对 MVP bootstrap 而言，这些渠道不是节点启动前置依赖。
+这些渠道只改变 artifact bytes 的获取位置，不改变 executable 形态。相同 exact gzip artifact bytes 必须验证到同一个 ArtifactHash / ProtocolHash，取得后直接进入相同 verify/gunzip/import/mount 流程。
+
+对 MVP bootstrap 而言，这些渠道不是节点启动前置依赖。
 
 ## Large resources
 
@@ -162,10 +194,11 @@ Genesis contains ordinary Records
 Genesis Protocol Records use ordinary core.record identity/signature rules
 Genesis Header uses ordinary core.block identity/signature rules
 previousBlock = "0" is the Core first-link sentinel
-ProtocolHash commits to ArtifactHash
+ProtocolHash commits to final ready-to-mount ArtifactHash
 embedded artifact storage does not change ProtocolHash
 MVP Core bootstrap does not require an external Protocol registry
+Genesis Node loads verified Cordis Plugin artifacts; it does not rebuild them
 Root Member / Genesis Repository / PoA admission remain outside Core
 ```
 
-#10 剩余工作只应收敛 deterministic Genesis assembly 的最小输入/输出与是否需要专用 fixture/helper；除非出现新的具体 bootstrap requirement，不再重新打开 ordinary Record/Block identity 与签名规则。
+#10 剩余工作只应收敛 deterministic Genesis assembly 的最小输入/输出与是否需要专用 fixture/helper；除非出现新的具体 bootstrap requirement，不再重新打开 ordinary Record/Block identity、签名或 Protocol build 边界。
