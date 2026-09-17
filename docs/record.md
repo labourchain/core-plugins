@@ -1,8 +1,8 @@
 # Record Model
 
-本文定义 LabourChain 当前 Record 数据模型、RecordId、作者确认与 Plugin 协议来源边界。
+本文定义 LabourChain 当前 Record 数据模型、RecordId、作者确认与 Protocol 来源边界。
 
-历史事实依据见 [`source-baseline.md`](source-baseline.md)。当前设计继续保留旧 `RawRecord -> Record` 结构，但将旧 `protocol / protocolHash` 迁移为 `plugin / pluginHash`，并把 Record identity 统一收敛到 RFC 8785 JCS。
+历史事实依据见 [`source-baseline.md`](source-baseline.md)。当前设计继续保留旧 `RawRecord -> Record` 结构，并恢复 `protocol / protocolHash` 作为链上协议来源字段，同时把 Record identity 统一收敛到 RFC 8785 JCS。
 
 ## Source baseline
 
@@ -32,8 +32,8 @@ Record
 
 ```ts
 interface RawRecord {
-  plugin: string
-  pluginHash: PluginHash
+  protocol: string
+  protocolHash: ProtocolHash
   createdBy: EntityPublicKey
   createdAt: string
   data: unknown
@@ -45,16 +45,16 @@ interface Record extends RawRecord {
 }
 ```
 
-字段保持最小，不为不同业务类型增加独立确证通道。Plugin、Entity、Labour、Asset、Repository、Project 等都可以作为具体 Plugin 产生的 Record data 进入链。
+字段保持最小，不为不同业务类型增加独立确证通道。Protocol、Entity、Labour、Asset、Repository、Project 等都可以作为具体 Protocol 产生的 Record data 进入链。
 
 ## 两种来源
 
 Record 同时表达两种不同来源：
 
 ```text
-plugin / pluginHash
+protocol / protocolHash
 -> 协议来源
--> 这条 Record 由哪个链上 Plugin / 协议产生、签发
+-> 这条 Record 由哪个链上 Protocol 解释、产生或签发
 
 createdBy / signature
 -> 主体来源
@@ -63,11 +63,11 @@ createdBy / signature
 
 这两个关系不能混淆。
 
-`createdBy` 不表示谁发布了 Plugin；Plugin 发布本身也只是另一条由 `core.plugin` 产生的 Record。
+`createdBy` 不表示谁发布了 Protocol；Protocol 发布本身也只是另一条由 `core.protocol` 产生的 Record。
 
-## Plugin declaration 与 PluginHash
+## Protocol declaration 与 ProtocolHash
 
-`plugin` 是人类可读声明：
+`protocol` 是人类可读声明：
 
 ```text
 name@version
@@ -79,14 +79,14 @@ name@version
 labour.work@0.1.0
 ```
 
-`pluginHash` 是机器执行时使用的 exact Plugin identity。
+`protocolHash` 是机器执行时使用的 exact Protocol identity。
 
 ```text
-runner/runtime authority -> pluginHash
-human review/confirmation -> plugin = name@version
+runtime/composition authority -> protocolHash
+human review/confirmation     -> protocol = name@version
 ```
 
-runner 不要求通过 `pluginHash` 反查 Plugin 后再验证 `name/version`。`plugin` 是被作者一并确认的可读声明，因此仍然属于 RawRecord，并参与 RecordId 与 signature。
+runtime 不要求通过 `protocolHash` 反查 Protocol 后再验证 `name/version`。`protocol` 是被作者一并确认的可读声明，因此仍然属于 RawRecord，并参与 RecordId 与 signature。
 
 ## RecordId
 
@@ -110,8 +110,8 @@ RecordId = DoubleSHA256(JCS(RawRecord))
 其中 RawRecord 完整包含：
 
 ```text
-plugin
-pluginHash
+protocol
+protocolHash
 createdBy
 createdAt
 data
@@ -123,20 +123,20 @@ JCS 是对旧实现“先形成稳定紧凑表示，再计算哈希”原则的�
 
 ## Record.data 完整参与 fact identity
 
-RecordId 承诺完整 `data`，不对具体 Plugin payload 做 identity 特例。
+RecordId 承诺完整 `data`，不对具体 Protocol payload 做 identity 特例。
 
 因此当：
 
 ```text
-Record.data = Plugin
+Record.data = Protocol
 ```
 
-且 Plugin 包含 optional embedded artifact 时，embedded bytes 也属于该条 Record 的事实内容。
+且 Protocol 包含 optional embedded artifact 时，embedded bytes 也属于该条 Record 的事实内容。
 
-这与 PluginHash 的语义不同：
+这与 ProtocolHash 的语义不同：
 
 ```text
-PluginHash
+ProtocolHash
 -> executable identity
 -> artifact storage field 不参与 identity
 
@@ -145,14 +145,14 @@ RecordId
 -> 完整 Record.data 参与 identity
 ```
 
-所以同一个 Plugin descriptor：
+所以同一个 Protocol descriptor：
 
 ```text
-Plugin with embedded artifact
-Plugin without embedded artifact
+Protocol with embedded artifact
+Protocol without embedded artifact
 ```
 
-可以具有相同 PluginHash，但如果分别作为两条 Record.data 写入链，它们具有不同 RecordId。这是预期行为，因为两条链上事实实际携带的数据不同。
+可以具有相同 ProtocolHash，但如果分别作为两条 Record.data 写入链，它们具有不同 RecordId。这是预期行为，因为两条链上事实实际携带的数据不同。
 
 ## JCS / JSON data boundary
 
@@ -181,7 +181,7 @@ accessor property
 invalid Unicode / lone surrogate
 ```
 
-业务 Plugin 可以进一步限制 `data`，但 `core.record` 只规定通用事实容器所需的 canonical JSON 边界。
+业务 Protocol 可以进一步限制 `data`，但 `core.record` 只规定通用事实容器所需的 canonical JSON 边界。
 
 ## createdBy
 
@@ -246,24 +246,25 @@ verifySignature
 它不负责：
 
 ```text
-resolve Plugin
-执行 Plugin
-判断 Plugin 是否允许产生该 Record
-Plugin dependency resolution
-Plugin availability / activation
+resolve Protocol
+执行 Protocol implementation
+判断 Protocol 是否允许产生该 Record
+Protocol dependency resolution
+Protocol availability / activation
+Cordis Plugin lifecycle
 Block order
 Genesis bootstrap exception
 Labour / Asset / Project business DAG
 persistence / network arrival
 ```
 
-Record 声明其协议来源；runtime/composition layer 根据 `pluginHash` 加载 exact Plugin，并由该 Plugin 执行自己的协议规则。
+Record 声明其协议来源；runtime/composition layer 根据 `protocolHash` 加载 exact Protocol implementation，并由对应实现执行自己的协议规则。
 
 ## createdAt
 
 `createdAt` 是 Record 的被签名事实字段，并参与 RecordId。
 
-当前 `core.record` 只要求它是 JCS 可表示的 string，不在通用 Core 中赋予 wall-clock、排序或可信时间语义。领域 Plugin 或 runtime 可以定义额外时间规则，但这些规则不改变 Record primitive。
+当前 `core.record` 只要求它是 JCS 可表示的 string，不在通用 Core 中赋予 wall-clock、排序或可信时间语义。领域 Protocol 或 runtime 可以定义额外时间规则，但这些规则不改变 Record primitive。
 
 ## Genesis boundary
 
