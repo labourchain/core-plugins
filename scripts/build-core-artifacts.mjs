@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -9,7 +9,8 @@ import { assertRuntimeSize, gunzipRuntime } from './runtime-bundle.mjs'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const OUT_DIR = join(ROOT, 'dist', 'core-artifacts')
-const VERSION = '0.1.0'
+const PACKAGE = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'))
+const VERSION = PACKAGE.version
 const ABI = 1
 const LARGE_ARTIFACT_BYTES = 500 * 1024
 
@@ -108,24 +109,24 @@ function canonicalGzip(bytes) {
 
 async function buildCorePlugin(config) {
   const runtimeBytes = await buildRuntimeBundle(config)
-  const compressedRuntime = canonicalGzip(runtimeBytes)
-  const artifact = compressedRuntime.toString('base64')
+  const artifactBytes = canonicalGzip(runtimeBytes)
+  const artifact = artifactBytes.toString('base64')
   const plugin = {
     name: config.name,
     version: VERSION,
     runtime: { kind: 'js-esm', abi: ABI },
     dependencies: [],
-    artifactHash: artifactHash(compressedRuntime),
+    artifactHash: artifactHash(artifactBytes),
     artifact,
   }
 
   const pluginHash = verifyEmbeddedArtifact(plugin)
   const diagnostics = {
     runtimeSize: runtimeBytes.byteLength,
-    artifactSize: compressedRuntime.byteLength,
+    artifactSize: artifactBytes.byteLength,
     base64Size: Buffer.byteLength(artifact, 'ascii'),
   }
-  return { pluginHash, plugin, diagnostics }
+  return { pluginHash, plugin, diagnostics, artifactBytes }
 }
 
 async function smokeLoad(config, built) {
@@ -157,10 +158,32 @@ async function main() {
   await rm(OUT_DIR, { recursive: true, force: true })
   await mkdir(OUT_DIR, { recursive: true })
 
+  const plugins = []
+
   for (const config of CORE_PLUGINS) {
     const built = await buildCorePlugin(config)
     await smokeLoad(config, built)
-    await writeFile(join(OUT_DIR, `${config.name}.json`), `${JSON.stringify(built, null, 2)}\n`)
+
+    const descriptorFile = `${config.name}-${VERSION}.json`
+    const artifactFile = `${config.name}-${VERSION}.js-esm.gz`
+    const descriptor = {
+      pluginHash: built.pluginHash,
+      plugin: built.plugin,
+      diagnostics: built.diagnostics,
+    }
+
+    await writeFile(join(OUT_DIR, descriptorFile), `${JSON.stringify(descriptor, null, 2)}\n`)
+    await writeFile(join(OUT_DIR, artifactFile), built.artifactBytes)
+
+    plugins.push({
+      name: config.name,
+      version: VERSION,
+      pluginHash: built.pluginHash,
+      artifactHash: built.plugin.artifactHash,
+      descriptorFile,
+      artifactFile,
+      ...built.diagnostics,
+    })
 
     const { runtimeSize, artifactSize, base64Size } = built.diagnostics
     console.log(
@@ -170,6 +193,13 @@ async function main() {
       console.warn(`${config.name}: large executable artifact; consider moving static resources to Assets`)
     }
   }
+
+  const manifest = {
+    version: VERSION,
+    runtime: { kind: 'js-esm', abi: ABI },
+    plugins,
+  }
+  await writeFile(join(OUT_DIR, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
 }
 
 await main()

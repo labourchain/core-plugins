@@ -23,3 +23,9 @@ import { recordsRoot, verifyBlock } from '@labourchain/core-plugins/block'
 ```
 
 These Core APIs are deterministic identity / validation / verification primitives. Private-key management and signing, Plugin resolution/loading, Repo/Member rules, PoA authorization, persistence, networking, business semantics, and runtime lifecycle belong outside Core.
+
+## Release
+
+GitHub Releases are the only external release channel for now; this repository is not published to npm. A `vMAJOR.MINOR.PATCH` tag runs the full verification flow and publishes the four exact `.js-esm.gz` Core Plugin artifacts, matching descriptor JSON files, and `manifest.json`. Consumers still verify ArtifactHash / PluginHash themselves.
+
+See [`docs/release.md`](docs/release.md) and [`spec/release.md`](spec/release.md) for the complete release contract.

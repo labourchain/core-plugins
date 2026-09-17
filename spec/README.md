@@ -30,6 +30,7 @@ core.block
 
 - [`core-plugin.md`](core-plugin.md) — 单 artifact Plugin data、ArtifactHash / PluginHash、strict chain-data validation、embedded/external artifact verification；
 - [`core-runtime-abi.md`](core-runtime-abi.md) — `js-esm` ABI v1、single gzip executable artifact、1 MiB bounded gunzip 与 Core artifact build profile；
+- [`release.md`](release.md) — GitHub Release-only 发行资产、tag/version gate、release build pin 与 npm 延后边界；
 - [`core-record.md`](core-record.md) — ordinary Record primitive：JCS RecordId、协议来源、EntityPublicKey 作者确认与 signature verification；
 - [`core-entity.md`](core-entity.md) — Entity identity data 与共享 EntityPublicKey primitive；
 - [`core-block.md`](core-block.md) — ordinary Block confirmation primitives：recordsRoot、BlockId、packer confirmation 与 `verifyBlock`；
@@ -88,6 +89,12 @@ uncompressed js-esm runtime > 1 MiB
 ```
 
 1 MiB 既防 gzip-bomb 类异常展开，也约束单 Plugin 规模。超过该规模应优先拆 Plugin 或将非执行内容移到 Asset / Runtime。
+
+## Release contract
+
+当前 `package.json.version` 是四个 Core Plugin 的统一 release version。构建输出每个 Plugin 的 versioned descriptor JSON 与 raw `.js-esm.gz`，并生成 `manifest.json`；`pnpm check` 必须从磁盘重新验证这些 release assets。
+
+GitHub Release 仅作为分发渠道。tag 必须使用 `vMAJOR.MINOR.PATCH` 并与 generated manifest version 一致；Release job 固定当前 canonical build toolchain，创建 draft、上传完整资产后才发布。npm publishing 当前禁止。
 
 ## Record contract
 
@@ -160,6 +167,6 @@ observability
 ## Deferred work
 
 - #22 slim `core.plugin` runtime contract 已完成；
-- #23 defines Plugin Dev SDK build/bundle/gzip/reproducible-build tooling;
-- #24 defines release/distribution/discovery channels;
+- #23 Plugin Dev SDK 延后到 Core/Repo package boundaries 完成后；
+- #24 GitHub Release-only release/distribution flow 已收敛并进入实现；
 - #10 finalizes Genesis after Plugin identities are stable.
