@@ -38,6 +38,17 @@ runtime.abi = 1
 plugin
 ```
 
+其 runtime contract 显式声明：
+
+```text
+plugin.name = <name>@<version>
+plugin.provide = protocol:<name>@<version>
+plugin.inject = Cordis runtime dependencies
+plugin.apply = callable
+```
+
+`plugin.provide` 是 Cordis metadata 声明，`apply()` 中使用 `ctx.provide()` 实际注册 canonical Protocol service。
+
 最终 release artifact filename 固定为：
 
 ```text
@@ -80,7 +91,7 @@ Repo Node / Host loader
 -> 加载时再次验证 projection，并按 exact ProtocolHash 解析依赖
 ```
 
-Protocol implementation 通过 Cordis Plugin metadata 与 Service / Context API 显式声明并提供能力；artifact 不通过任意 ESM exports 暴露 API，也不 bundle 第二份 Cordis runtime。
+Protocol artifact 不通过任意 ESM exports 暴露 API，也不 bundle 第二份 Cordis runtime。
 
 1 MiB 是解压后 runtime hard limit，也是 Protocol 工程边界；超过该规模应优先拆 Protocol 或把非执行内容移入 Asset / Runtime。约 500 KiB compressed artifact 只属于 Dev SDK/build tooling warning，不是 Core validity。
 
@@ -152,7 +163,7 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 ### [`runtime-abi.md`](runtime-abi.md)
 
-定义 `cordis-js-esm` ABI v1：ready-to-mount single gzip artifact、显式 `plugin` export、Protocol dependency -> Cordis `inject` projection、验证所有权、1 MiB bounded gunzip，以及 Host/Node 不重新构建 Protocol 的边界。
+定义 `cordis-js-esm` ABI v1：ready-to-mount single gzip artifact、显式 `plugin` export、Cordis name/provide/inject/apply contract、Protocol dependency -> Cordis `inject` projection、验证所有权、1 MiB bounded gunzip，以及 Host/Node 不重新构建 Protocol 的边界。
 
 ### [`release.md`](release.md)
 
