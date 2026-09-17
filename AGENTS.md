@@ -54,6 +54,23 @@ core.block
 
 `BlockHeader` is a public type owned by `core.block`; do not reintroduce a separate `core.block-header` Plugin merely because the historical Service had one.
 
+## Agent package usage
+
+When generating or modifying code that consumes `@labourchain/core-plugins`, first map the task to the owning Core Plugin and prefer its explicit package subpath. The root package export is an aggregate convenience, not a reason to mix responsibilities.
+
+| Task | Import | Intended public surface |
+| --- | --- | --- |
+| Plugin descriptor / executable identity verification | `@labourchain/core-plugins/plugin` | `validatePlugin`, `artifactHash`, `pluginHash`, `verifyArtifact`, `verifyEmbeddedArtifact` |
+| Entity public-key identity validation / Base58 conversion | `@labourchain/core-plugins/entity` | `validateEntity`, `validateEntityPublicKey`, `encodeBase58btc`, `decodeBase58btc` |
+| Record canonicalization / identity / author-signature verification | `@labourchain/core-plugins/record` | `canonicalRecord`, `recordId`, `signingPayload`, `validateRawRecord`, `validateRecord`, `verifySignature` |
+| RecordsRoot / BlockId / Block and Header confirmation verification | `@labourchain/core-plugins/block` | `recordsRoot`, `blockId`, `blockSigningPayload`, `verifyHeader`, `verifyBlock` |
+
+Before inventing a helper, check the owning subpath and its spec. Use `docs/plugin.md` + `spec/core-plugin.md`, `docs/entity.md` + `spec/core-entity.md`, `docs/record.md` + `spec/core-record.md`, or `docs/block.md` + `spec/core-block.md` for semantics that are not obvious from the TypeScript surface.
+
+Do not infer capabilities merely because adjacent data is present. Core does not provide private-key signing, Plugin build/publish/resolution/loading, Entity registration state, Repository/Member authorization, PoA authorization, persistence, network sync, canonical-chain selection, business DAG semantics, or runtime lifecycle. Those belong to higher layers unless a reviewed Core spec explicitly adds them.
+
+Do not add a second agent manifest, AI metadata schema, runtime discovery document, or duplicate public API solely to make agents understand the package. README/AGENTS guidance plus the existing package subpath exports are the current discovery surface.
+
 ## Core composition
 
 The source-aligned composition is:
