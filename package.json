@@ -21,7 +21,7 @@
     "build:artifacts": "pnpm run build && node scripts/build-core-artifacts.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "check": "pnpm run typecheck && pnpm run test && pnpm run build:artifacts"
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build:artifacts && node scripts/smoke-package-exports.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
