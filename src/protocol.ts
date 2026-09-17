@@ -1,38 +1,38 @@
 import { createHash } from 'node:crypto'
 
 export type ArtifactHash = string
-export type PluginHash = string
+export type ProtocolHash = string
 
-export interface PluginRuntime {
+export interface ProtocolRuntime {
   kind: 'js-esm'
   abi: number
 }
 
-export interface PluginDependency {
+export interface ProtocolDependency {
   name: string
   version: string
-  pluginHash: PluginHash
+  protocolHash: ProtocolHash
 }
 
-export interface Plugin {
+export interface Protocol {
   name: string
   version: string
-  runtime: PluginRuntime
-  dependencies: PluginDependency[]
+  runtime: ProtocolRuntime
+  dependencies: ProtocolDependency[]
   artifactHash: ArtifactHash
   artifact?: string
 }
 
 const DIGEST_RE = /^[0-9a-f]{64}$/
-const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/
+const PROTOCOL_NAME_RE = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/
 const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u
 const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u
-const PLUGIN_KEYS = ['name', 'version', 'runtime', 'dependencies', 'artifactHash'] as const
+const PROTOCOL_KEYS = ['name', 'version', 'runtime', 'dependencies', 'artifactHash'] as const
 
-export class PluginError extends Error {
+export class ProtocolError extends Error {
   constructor(message: string) {
     super(message)
-    this.name = 'PluginError'
+    this.name = 'ProtocolError'
   }
 }
 
@@ -51,16 +51,16 @@ function assertPlainDataObject(
   label: string,
 ): asserts value is Record<string, unknown> {
   if (!isPlainObject(value)) {
-    throw new PluginError(`${label} must be a plain object`)
+    throw new ProtocolError(`${label} must be a plain object`)
   }
 
   for (const key of Reflect.ownKeys(value)) {
     if (typeof key !== 'string') {
-      throw new PluginError(`${label} contains symbol-keyed data`)
+      throw new ProtocolError(`${label} contains symbol-keyed data`)
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key)
     if (descriptor === undefined || descriptor.enumerable !== true || !hasOwn(descriptor, 'value')) {
-      throw new PluginError(`${label}.${key} must be an enumerable data property`)
+      throw new ProtocolError(`${label}.${key} must be an enumerable data property`)
     }
   }
 }
@@ -76,31 +76,31 @@ function assertExactKeys(
     actual.length !== expected.length ||
     actual.some((key) => typeof key !== 'string' || !expected.includes(key))
   ) {
-    throw new PluginError(`${label} contains unknown or missing fields`)
+    throw new ProtocolError(`${label} contains unknown or missing fields`)
   }
 }
 
 function assertDenseArray(value: unknown[], label: string): void {
   if (Object.getPrototypeOf(value) !== Array.prototype) {
-    throw new PluginError(`${label} must be an ordinary array`)
+    throw new ProtocolError(`${label} must be an ordinary array`)
   }
 
   const ownKeys = Reflect.ownKeys(value)
   if (ownKeys.length !== value.length + 1) {
-    throw new PluginError(`${label} must be a dense array without extra properties`)
+    throw new ProtocolError(`${label} must be a dense array without extra properties`)
   }
 
   for (let index = 0; index < value.length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
     if (descriptor === undefined || descriptor.enumerable !== true || !hasOwn(descriptor, 'value')) {
-      throw new PluginError(`${label}[${index}] must be an enumerable data property`)
+      throw new ProtocolError(`${label}[${index}] must be an enumerable data property`)
     }
   }
 }
 
 function assertNonEmptyString(value: unknown, label: string): asserts value is string {
   if (typeof value !== 'string' || value.length === 0) {
-    throw new PluginError(`${label} must be a non-empty string`)
+    throw new ProtocolError(`${label} must be a non-empty string`)
   }
 }
 
@@ -110,34 +110,34 @@ function assertWellFormedUnicode(value: string, label: string): void {
     if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
       const next = value.charCodeAt(index + 1)
       if (!Number.isInteger(next) || next < 0xdc00 || next > 0xdfff) {
-        throw new PluginError(`${label} contains invalid Unicode data`)
+        throw new ProtocolError(`${label} contains invalid Unicode data`)
       }
       index += 1
       continue
     }
     if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      throw new PluginError(`${label} contains invalid Unicode data`)
+      throw new ProtocolError(`${label} contains invalid Unicode data`)
     }
   }
 }
 
-function assertPluginName(value: unknown, label: string): asserts value is string {
+function assertProtocolName(value: unknown, label: string): asserts value is string {
   assertNonEmptyString(value, label)
-  if (!PLUGIN_NAME_RE.test(value)) {
-    throw new PluginError(`${label} must be a lowercase dotted Plugin namespace`)
+  if (!PROTOCOL_NAME_RE.test(value)) {
+    throw new ProtocolError(`${label} must be a lowercase dotted Protocol namespace`)
   }
 }
 
 function assertExactVersion(value: unknown, label: string): asserts value is string {
   assertNonEmptyString(value, label)
   if (!SEMVER_RE.test(value)) {
-    throw new PluginError(`${label} must be an exact SemVer 2.0.0 version`)
+    throw new ProtocolError(`${label} must be an exact SemVer 2.0.0 version`)
   }
 }
 
 function assertDigest(value: unknown, label: string): asserts value is string {
   if (typeof value !== 'string' || !DIGEST_RE.test(value)) {
-    throw new PluginError(`${label} must be 64-character lowercase hexadecimal`)
+    throw new ProtocolError(`${label} must be 64-character lowercase hexadecimal`)
   }
 }
 
@@ -149,7 +149,7 @@ function assertUnique(values: readonly string[], label: string): void {
   const seen = new Set<string>()
   for (const value of values) {
     if (seen.has(value)) {
-      throw new PluginError(`${label} must be unique`)
+      throw new ProtocolError(`${label} must be unique`)
     }
     seen.add(value)
   }
@@ -157,24 +157,24 @@ function assertUnique(values: readonly string[], label: string): void {
 
 function decodeCanonicalBase64(value: unknown, label: string): Uint8Array {
   if (typeof value !== 'string' || !BASE64_RE.test(value)) {
-    throw new PluginError(`${label} must be canonical RFC 4648 Base64`)
+    throw new ProtocolError(`${label} must be canonical RFC 4648 Base64`)
   }
 
   const bytes = Buffer.from(value, 'base64')
   if (bytes.toString('base64') !== value) {
-    throw new PluginError(`${label} must be canonical RFC 4648 Base64`)
+    throw new ProtocolError(`${label} must be canonical RFC 4648 Base64`)
   }
   return bytes
 }
 
-function parseRuntime(value: unknown): PluginRuntime {
+function parseRuntime(value: unknown): ProtocolRuntime {
   assertExactKeys(value, ['kind', 'abi'], 'runtime')
 
   if (value.kind !== 'js-esm') {
-    throw new PluginError('runtime.kind must be "js-esm"')
+    throw new ProtocolError('runtime.kind must be "js-esm"')
   }
   if (!Number.isSafeInteger(value.abi) || (value.abi as number) <= 0) {
-    throw new PluginError('runtime.abi must be a positive safe integer')
+    throw new ProtocolError('runtime.abi must be a positive safe integer')
   }
 
   return {
@@ -183,46 +183,46 @@ function parseRuntime(value: unknown): PluginRuntime {
   }
 }
 
-function parseDependency(value: unknown, index: number): PluginDependency {
+function parseDependency(value: unknown, index: number): ProtocolDependency {
   const label = `dependencies[${index}]`
-  assertExactKeys(value, ['name', 'version', 'pluginHash'], label)
-  assertPluginName(value.name, `${label}.name`)
+  assertExactKeys(value, ['name', 'version', 'protocolHash'], label)
+  assertProtocolName(value.name, `${label}.name`)
   assertExactVersion(value.version, `${label}.version`)
-  assertDigest(value.pluginHash, `${label}.pluginHash`)
+  assertDigest(value.protocolHash, `${label}.protocolHash`)
 
   return {
     name: value.name,
     version: value.version,
-    pluginHash: value.pluginHash,
+    protocolHash: value.protocolHash,
   }
 }
 
-export function validatePlugin(value: unknown): Plugin {
+export function validateProtocol(value: unknown): Protocol {
   if (!isPlainObject(value)) {
-    throw new PluginError('plugin must be a plain object')
+    throw new ProtocolError('protocol must be a plain object')
   }
 
   const hasArtifact = hasOwn(value, 'artifact')
-  assertExactKeys(value, hasArtifact ? [...PLUGIN_KEYS, 'artifact'] : PLUGIN_KEYS, 'plugin')
+  assertExactKeys(value, hasArtifact ? [...PROTOCOL_KEYS, 'artifact'] : PROTOCOL_KEYS, 'protocol')
 
-  assertPluginName(value.name, 'plugin.name')
-  assertExactVersion(value.version, 'plugin.version')
+  assertProtocolName(value.name, 'protocol.name')
+  assertExactVersion(value.version, 'protocol.version')
   const runtime = parseRuntime(value.runtime)
-  assertDigest(value.artifactHash, 'plugin.artifactHash')
+  assertDigest(value.artifactHash, 'protocol.artifactHash')
 
   if (!Array.isArray(value.dependencies)) {
-    throw new PluginError('plugin.dependencies must be an array')
+    throw new ProtocolError('protocol.dependencies must be an array')
   }
-  assertDenseArray(value.dependencies, 'plugin.dependencies')
+  assertDenseArray(value.dependencies, 'protocol.dependencies')
 
   const dependencies = value.dependencies.map(parseDependency)
   assertUnique(
     dependencies.map((dependency) => dependency.name),
-    'plugin.dependencies',
+    'protocol.dependencies',
   )
   dependencies.sort((left, right) => compareUtf8(left.name, right.name))
 
-  const plugin: Plugin = {
+  const protocol: Protocol = {
     name: value.name,
     version: value.version,
     runtime,
@@ -231,14 +231,14 @@ export function validatePlugin(value: unknown): Plugin {
   }
 
   if (hasArtifact) {
-    const bytes = decodeCanonicalBase64(value.artifact, 'plugin.artifact')
-    if (artifactHash(bytes) !== plugin.artifactHash) {
-      throw new PluginError('plugin.artifact hash mismatch')
+    const bytes = decodeCanonicalBase64(value.artifact, 'protocol.artifact')
+    if (artifactHash(bytes) !== protocol.artifactHash) {
+      throw new ProtocolError('protocol.artifact hash mismatch')
     }
-    plugin.artifact = value.artifact as string
+    protocol.artifact = value.artifact as string
   }
 
-  return plugin
+  return protocol
 }
 
 function compareUtf16(left: string, right: string): number {
@@ -257,7 +257,7 @@ function serializeJcs(value: unknown): string {
 
   if (typeof value === 'number') {
     if (!Number.isFinite(value) || Object.is(value, -0)) {
-      throw new PluginError('JCS number is not valid I-JSON data')
+      throw new ProtocolError('JCS number is not valid I-JSON data')
     }
     return JSON.stringify(value)
   }
@@ -279,16 +279,16 @@ function serializeJcs(value: unknown): string {
     return `{${members.join(',')}}`
   }
 
-  throw new PluginError('plugin contains a value that cannot be represented by JCS')
+  throw new ProtocolError('protocol contains a value that cannot be represented by JCS')
 }
 
-function pluginIdentity(value: Plugin): Omit<Plugin, 'artifact'> {
+function protocolIdentity(value: Protocol): Omit<Protocol, 'artifact'> {
   const { artifact: _artifact, ...identity } = value
   return identity
 }
 
-function canonicalValidatedPlugin(plugin: Plugin): Uint8Array {
-  return Buffer.from(serializeJcs(pluginIdentity(plugin)), 'utf8')
+function canonicalValidatedProtocol(protocol: Protocol): Uint8Array {
+  return Buffer.from(serializeJcs(protocolIdentity(protocol)), 'utf8')
 }
 
 function doubleSha256(bytes: Uint8Array): Uint8Array {
@@ -298,53 +298,56 @@ function doubleSha256(bytes: Uint8Array): Uint8Array {
 
 export function artifactHash(bytes: Uint8Array): ArtifactHash {
   if (!(bytes instanceof Uint8Array)) {
-    throw new PluginError('artifactHash input must be bytes')
+    throw new ProtocolError('artifactHash input must be bytes')
   }
   return Buffer.from(doubleSha256(bytes)).toString('hex')
 }
 
-function hashValidatedPlugin(plugin: Plugin): PluginHash {
-  return Buffer.from(doubleSha256(canonicalValidatedPlugin(plugin))).toString('hex')
+function hashValidatedProtocol(protocol: Protocol): ProtocolHash {
+  return Buffer.from(doubleSha256(canonicalValidatedProtocol(protocol))).toString('hex')
 }
 
-export function pluginHash(plugin: unknown): PluginHash {
-  return hashValidatedPlugin(validatePlugin(plugin))
+export function protocolHash(protocol: unknown): ProtocolHash {
+  return hashValidatedProtocol(validateProtocol(protocol))
 }
 
-function compareExpectedPluginHash(plugin: Plugin, expectedPluginHash?: PluginHash): PluginHash {
-  if (expectedPluginHash !== undefined) {
-    assertDigest(expectedPluginHash, 'expectedPluginHash')
+function compareExpectedProtocolHash(
+  protocol: Protocol,
+  expectedProtocolHash?: ProtocolHash,
+): ProtocolHash {
+  if (expectedProtocolHash !== undefined) {
+    assertDigest(expectedProtocolHash, 'expectedProtocolHash')
   }
 
-  const calculated = hashValidatedPlugin(plugin)
-  if (expectedPluginHash !== undefined && calculated !== expectedPluginHash) {
-    throw new PluginError('PluginHash mismatch')
+  const calculated = hashValidatedProtocol(protocol)
+  if (expectedProtocolHash !== undefined && calculated !== expectedProtocolHash) {
+    throw new ProtocolError('ProtocolHash mismatch')
   }
   return calculated
 }
 
 export function verifyArtifact(
-  plugin: unknown,
+  protocol: unknown,
   bytes: Uint8Array,
-  expectedPluginHash?: PluginHash,
-): PluginHash {
-  const value = validatePlugin(plugin)
+  expectedProtocolHash?: ProtocolHash,
+): ProtocolHash {
+  const value = validateProtocol(protocol)
   if (!(bytes instanceof Uint8Array)) {
-    throw new PluginError('artifact bytes must be bytes')
+    throw new ProtocolError('artifact bytes must be bytes')
   }
   if (artifactHash(bytes) !== value.artifactHash) {
-    throw new PluginError('artifact hash mismatch')
+    throw new ProtocolError('artifact hash mismatch')
   }
-  return compareExpectedPluginHash(value, expectedPluginHash)
+  return compareExpectedProtocolHash(value, expectedProtocolHash)
 }
 
 export function verifyEmbeddedArtifact(
-  plugin: unknown,
-  expectedPluginHash?: PluginHash,
-): PluginHash {
-  const value = validatePlugin(plugin)
+  protocol: unknown,
+  expectedProtocolHash?: ProtocolHash,
+): ProtocolHash {
+  const value = validateProtocol(protocol)
   if (value.artifact === undefined) {
-    throw new PluginError('plugin.artifact is required')
+    throw new ProtocolError('protocol.artifact is required')
   }
-  return compareExpectedPluginHash(value, expectedPluginHash)
+  return compareExpectedProtocolHash(value, expectedProtocolHash)
 }

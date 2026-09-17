@@ -33,8 +33,8 @@ function entityPublicKey(publicKey: KeyObject): string {
 function makeSignedRecord(index = 0, data: unknown = { index }): ChainRecord {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519')
   const raw: RawRecord = {
-    plugin: 'test.block-record@0.1.0',
-    pluginHash: '44'.repeat(32),
+    protocol: 'test.block-record@0.1.0',
+    protocolHash: '44'.repeat(32),
     createdBy: entityPublicKey(publicKey),
     createdAt: `2026-09-15T09:00:0${index}Z`,
     data,
@@ -207,7 +207,7 @@ describe('core.block confirmation container', () => {
     expect(verifyBlock(block)).toBe(false)
   })
 
-  it('does not require Plugin availability, Repo registration, or business dependency order', () => {
+  it('does not require Protocol availability, Repo registration, or business dependency order', () => {
     const source = makeSignedRecord(0, { kind: 'source' })
     const dependent = makeSignedRecord(1, { dependsOn: source.id })
     const block = makeSignedBlock([dependent, source])

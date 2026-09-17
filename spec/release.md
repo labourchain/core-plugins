@@ -6,7 +6,7 @@ Status: implemented target for GitHub Release-only Core distribution.
 
 `package.json.version` is the current Core repository release version and MUST be an exact stable SemVer `MAJOR.MINOR.PATCH` value.
 
-All four generated Core Plugin descriptors MUST use that same version. A GitHub release tag MUST be exactly `v${version}`.
+All four generated Core Protocol descriptors MUST use that same version. A GitHub release tag MUST be exactly `v${version}`.
 
 The root package MUST remain `private` while npm publishing is disabled.
 
@@ -15,7 +15,7 @@ The root package MUST remain `private` while npm publishing is disabled.
 `pnpm build:artifacts` MUST recreate `dist/core-artifacts/` and emit exactly one descriptor JSON and one raw gzip executable artifact for each of:
 
 ```text
-core.plugin
+core.protocol
 core.entity
 core.record
 core.block
@@ -24,23 +24,23 @@ core.block
 File naming MUST be:
 
 ```text
-<plugin>-<version>.json
-<plugin>-<version>.js-esm.gz
+<protocol>-<version>.json
+<protocol>-<version>.js-esm.gz
 ```
 
 It MUST also emit `manifest.json`.
 
-The raw `.js-esm.gz` bytes MUST be the same exact bytes represented by canonical Base64 in the corresponding `Plugin.artifact`.
+The raw `.js-esm.gz` bytes MUST be the same exact bytes represented by canonical Base64 in the corresponding `Protocol.artifact`.
 
-Adding release files MUST NOT alter the executable bundle bytes or PluginHash relative to the accepted build profile.
+Adding release files MUST NOT alter the executable bundle bytes or ProtocolHash relative to the accepted build profile.
 
 ## Descriptor output
 
 Each descriptor JSON MUST contain:
 
 ```text
-pluginHash
-plugin
+protocolHash
+protocol
   name
   version
   runtime
@@ -54,7 +54,7 @@ diagnostics
   base64Size
 ```
 
-The descriptor file itself is release/bootstrap metadata and is not part of Plugin identity.
+The descriptor file itself is release/bootstrap metadata and is not part of Protocol identity.
 
 ## Manifest output
 
@@ -63,10 +63,10 @@ The descriptor file itself is release/bootstrap metadata and is not part of Plug
 ```text
 version
 runtime { kind, abi }
-plugins[]
+protocols[]
   name
   version
-  pluginHash
+  protocolHash
   artifactHash
   descriptorFile
   artifactFile
@@ -75,25 +75,25 @@ plugins[]
   base64Size
 ```
 
-For the current Core release, `plugins[]` order MUST be:
+For the current Core release, `protocols[]` order MUST be:
 
 ```text
-core.plugin
+core.protocol
 core.entity
 core.record
 core.block
 ```
 
-The manifest MUST NOT become PluginHash input or chain-validity state.
+The manifest MUST NOT become ProtocolHash input or chain-validity state.
 
 ## Release asset verification
 
-After build, verification MUST read the emitted files from disk and, for every Plugin:
+After build, verification MUST read the emitted files from disk and, for every Protocol:
 
 1. confirm manifest and descriptor name/version agree;
-2. confirm manifest PluginHash/ArtifactHash agree with descriptor values;
-3. call `verifyArtifact(plugin, rawGzipBytes, pluginHash)`;
-4. call `verifyEmbeddedArtifact(plugin, pluginHash)`;
+2. confirm manifest ProtocolHash/ArtifactHash agree with descriptor values;
+3. call `verifyArtifact(protocol, rawGzipBytes, protocolHash)`;
+4. call `verifyEmbeddedArtifact(protocol, protocolHash)`;
 5. require decoded embedded artifact bytes to equal the raw `.gz` file exactly;
 6. bounded-gunzip the raw artifact using ABI v1 limits;
 7. confirm runtime/artifact/Base64 sizes equal the recorded diagnostics.
@@ -139,6 +139,6 @@ The workflow MUST use repository `GITHUB_TOKEN`/contents write permission only. 
 
 ## Distribution semantics
 
-GitHub Release is non-authoritative distribution. Consumers MUST verify exact downloaded gzip bytes with Core Plugin identity primitives before loading them.
+GitHub Release is non-authoritative distribution. Consumers MUST verify exact downloaded gzip bytes with Core Protocol identity primitives before loading them.
 
-Chain-embedded artifact, GitHub Release artifact, cache, and future mirrors identify the same Plugin only when the exact bytes and PluginHash verify.
+Chain-embedded artifact, GitHub Release artifact, cache, and future mirrors identify the same Protocol only when the exact bytes and ProtocolHash verify.

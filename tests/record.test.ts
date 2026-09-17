@@ -14,15 +14,15 @@ import {
 } from '../src/record.js'
 
 const FIXED_CREATED_BY = '1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE'
-const FIXED_PLUGIN_HASH = '11'.repeat(32)
+const FIXED_PROTOCOL_HASH = '11'.repeat(32)
 const FIXED_CANONICAL =
-  '{"createdAt":"2026-09-05T03:00:00Z","createdBy":"1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE","data":{"a":"x","b":2},"plugin":"test.fact@0.1.0","pluginHash":"1111111111111111111111111111111111111111111111111111111111111111"}'
-const FIXED_RECORD_ID = 'eb1e6c0bbda429d87b18049e828606b94293b2bf7410c07a4037644df6d9da86'
+  '{"createdAt":"2026-09-05T03:00:00Z","createdBy":"1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE","data":{"a":"x","b":2},"protocol":"test.fact@0.1.0","protocolHash":"1111111111111111111111111111111111111111111111111111111111111111"}'
+const FIXED_RECORD_ID = '20757efb5ce431db78e6b68aee34e0bd2b2f2fbdc85749fac0ee58bb8465333c'
 
 function fixedRawRecord(): RawRecord {
   return {
-    plugin: 'test.fact@0.1.0',
-    pluginHash: FIXED_PLUGIN_HASH,
+    protocol: 'test.fact@0.1.0',
+    protocolHash: FIXED_PROTOCOL_HASH,
     createdBy: FIXED_CREATED_BY,
     createdAt: '2026-09-05T03:00:00Z',
     data: { b: 2, a: 'x' },
@@ -31,8 +31,8 @@ function fixedRawRecord(): RawRecord {
 
 function rawFromRecord(record: ChainRecord): RawRecord {
   return {
-    plugin: record.plugin,
-    pluginHash: record.pluginHash,
+    protocol: record.protocol,
+    protocolHash: record.protocolHash,
     createdBy: record.createdBy,
     createdAt: record.createdAt,
     data: record.data,
@@ -44,8 +44,8 @@ function makeSignedRecord(): ChainRecord {
   const spki = Buffer.from(publicKey.export({ type: 'spki', format: 'der' }))
   const rawPublicKey = spki.subarray(spki.length - 32)
   const raw: RawRecord = {
-    plugin: 'test.signed@0.1.0',
-    pluginHash: '22'.repeat(32),
+    protocol: 'test.signed@0.1.0',
+    protocolHash: '22'.repeat(32),
     createdBy: encodeBase58btc(rawPublicKey),
     createdAt: '2026-09-05T04:00:00Z',
     data: { accepted: true, count: 3 },
@@ -67,8 +67,8 @@ describe('core.record identity', () => {
     const reordered = {
       data: { a: 'x', b: 2 },
       createdAt: '2026-09-05T03:00:00Z',
-      pluginHash: FIXED_PLUGIN_HASH,
-      plugin: 'test.fact@0.1.0',
+      protocolHash: FIXED_PROTOCOL_HASH,
+      protocol: 'test.fact@0.1.0',
       createdBy: FIXED_CREATED_BY,
     }
 
@@ -81,8 +81,8 @@ describe('core.record identity', () => {
     const alternateKey = encodeBase58btc(Uint8Array.from({ length: 32 }, (_, index) => index + 1))
 
     const mutations: RawRecord[] = [
-      { ...original, plugin: 'test.other@0.1.0' },
-      { ...original, pluginHash: '22'.repeat(32) },
+      { ...original, protocol: 'test.other@0.1.0' },
+      { ...original, protocolHash: '22'.repeat(32) },
       { ...original, createdBy: alternateKey },
       { ...original, createdAt: '2026-09-05T03:00:01Z' },
       { ...original, data: { a: 'x', b: 3 } },
@@ -93,28 +93,25 @@ describe('core.record identity', () => {
     }
   })
 
-  it('treats complete Record.data as fact identity, including embedded Plugin artifact storage', () => {
-    const pluginData = {
+  it('treats complete Record.data as fact identity, including embedded Protocol artifact storage', () => {
+    const protocolData = {
       name: 'test.embedded',
       version: '0.1.0',
-      runtime: { kind: 'js-esm', abi: 1, entry: 'runtime.mjs' },
-      schema: 'schema.cue',
+      runtime: { kind: 'js-esm', abi: 1 },
       dependencies: [],
-      files: [],
+      artifactHash: '33'.repeat(32),
     }
 
-    const withoutArtifact = { ...fixedRawRecord(), data: pluginData }
+    const withoutArtifact = { ...fixedRawRecord(), data: protocolData }
     const withArtifact = {
       ...fixedRawRecord(),
       data: {
-        ...pluginData,
-        artifact: {
-          'runtime.mjs': 'ZXhwb3J0IGRlZmF1bHQgMQo=',
-        },
+        ...protocolData,
+        artifact: 'ZXhwb3J0IGRlZmF1bHQgMQo=',
       },
     }
 
-    expect(withArtifact.pluginHash).toBe(withoutArtifact.pluginHash)
+    expect(withArtifact.protocolHash).toBe(withoutArtifact.protocolHash)
     expect(recordId(withArtifact)).not.toBe(recordId(withoutArtifact))
   })
 
@@ -164,10 +161,10 @@ describe('core.record identity', () => {
 
   it('requires the exact common envelope and current field representations', () => {
     expect(() => validateRawRecord({ ...fixedRawRecord(), extra: true })).toThrow(/unknown or missing/)
-    expect(() => validateRawRecord({ ...fixedRawRecord(), plugin: 'test.fact:0.1.0' })).toThrow(
+    expect(() => validateRawRecord({ ...fixedRawRecord(), protocol: 'test.fact:0.1.0' })).toThrow(
       /name@version/,
     )
-    expect(() => validateRawRecord({ ...fixedRawRecord(), pluginHash: 'AA'.repeat(32) })).toThrow(
+    expect(() => validateRawRecord({ ...fixedRawRecord(), protocolHash: 'AA'.repeat(32) })).toThrow(
       /lowercase hexadecimal/,
     )
     expect(() => validateRawRecord({ ...fixedRawRecord(), createdBy: '0OIl' })).toThrow(/base58btc/)

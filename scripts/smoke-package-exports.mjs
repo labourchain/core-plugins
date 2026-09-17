@@ -1,17 +1,17 @@
 const modules = [
   [
-    '@labourchain/core-plugins/plugin',
+    '@labourchain/core-protocols/protocol',
     [
-      'PluginError',
+      'ProtocolError',
       'artifactHash',
-      'pluginHash',
-      'validatePlugin',
+      'protocolHash',
+      'validateProtocol',
       'verifyArtifact',
       'verifyEmbeddedArtifact',
     ],
   ],
   [
-    '@labourchain/core-plugins/entity',
+    '@labourchain/core-protocols/entity',
     [
       'EntityError',
       'decodeBase58btc',
@@ -21,7 +21,7 @@ const modules = [
     ],
   ],
   [
-    '@labourchain/core-plugins/record',
+    '@labourchain/core-protocols/record',
     [
       'RECORD_SIGNING_DOMAIN',
       'RecordError',
@@ -34,7 +34,7 @@ const modules = [
     ],
   ],
   [
-    '@labourchain/core-plugins/block',
+    '@labourchain/core-protocols/block',
     [
       'BLOCK_SIGNING_DOMAIN',
       'BlockError',
@@ -56,4 +56,4 @@ for (const [specifier, expectedExports] of modules) {
   }
 }
 
-console.log('Core Plugin package subpath exports are importable')
+console.log('Core Protocol package subpath exports are importable')

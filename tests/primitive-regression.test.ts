@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { encodeBase58btc, validateEntityPublicKey } from '../src/entity.js'
-import { artifactHash } from '../src/plugin.js'
+import { artifactHash } from '../src/protocol.js'
 import { canonicalRecord, recordId, type RawRecord } from '../src/record.js'
 
 const CREATED_BY = '1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE'
-const PLUGIN_HASH = '11'.repeat(32)
+const PROTOCOL_HASH = '11'.repeat(32)
 
 describe('Core primitive regressions', () => {
   it('rejects non-byte artifactHash input at the public runtime boundary', () => {
@@ -21,8 +21,8 @@ describe('Core primitive regressions', () => {
 
   it('keeps UTF-16 property ordering and ECMAScript number serialization stable in RecordId', () => {
     const raw: RawRecord = {
-      plugin: 'test.fact@0.1.0',
-      pluginHash: PLUGIN_HASH,
+      protocol: 'test.fact@0.1.0',
+      protocolHash: PROTOCOL_HASH,
       createdBy: CREATED_BY,
       createdAt: '2026-09-05T03:00:00Z',
       data: {
@@ -33,9 +33,9 @@ describe('Core primitive regressions', () => {
     }
 
     const expectedCanonical =
-      '{"createdAt":"2026-09-05T03:00:00Z","createdBy":"1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE","data":{"é":4.5,"😀":0.000001,"\uE000":1e+30},"plugin":"test.fact@0.1.0","pluginHash":"1111111111111111111111111111111111111111111111111111111111111111"}'
+      '{"createdAt":"2026-09-05T03:00:00Z","createdBy":"1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE","data":{"é":4.5,"😀":0.000001,"\uE000":1e+30},"protocol":"test.fact@0.1.0","protocolHash":"1111111111111111111111111111111111111111111111111111111111111111"}'
 
     expect(Buffer.from(canonicalRecord(raw)).toString('utf8')).toBe(expectedCanonical)
-    expect(recordId(raw)).toBe('657008005024171c47e25dcf4d6d67970b67080411b3641a96cb13ca0ef88c46')
+    expect(recordId(raw)).toBe('dbe179c3d7e825a9253e14046e42f1652abd24d85803daffe3805931da8876a9')
   })
 })

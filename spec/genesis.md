@@ -15,7 +15,7 @@ Current design source:
 - `docs/source-baseline.md`
 - `docs/architecture.md`
 - `docs/genesis.md`
-- `docs/plugin.md`
+- `docs/protocol.md`
 - `docs/record.md`
 
 ## Required structural invariant
@@ -23,25 +23,25 @@ Current design source:
 ```text
 Genesis = Block
 Block.records[] = Record[]
-Plugin bootstrap data = Record.data = Plugin
+Protocol bootstrap data = Record.data = Protocol
 ```
 
-There is no independent `GenesisManifest` / `S0 Plugin artifact set` chain-data model.
+There is no independent `GenesisManifest` / `S0 Protocol artifact set` chain-data model.
 
-## Initial Core Plugin Records
+## Initial Core Protocol Records
 
-Initial Core Plugin data is carried in Records interpreted by `core.plugin`:
+Initial Core Protocol data is carried in Records interpreted by `core.protocol`:
 
 ```text
-core.plugin
+core.protocol
 core.record
 core.entity
 core.block
 ```
 
-`BlockHeader` belongs to `core.block`; there is no independent `core.block-header` Plugin.
+`BlockHeader` belongs to `core.block`; there is no independent `core.block-header` Protocol.
 
-For MVP bootstrap, each initial Core Plugin Record MUST carry a complete valid embedded gzip `Plugin.artifact` as defined by `spec/core-plugin.md`.
+For MVP bootstrap, each initial Core Protocol Record MUST carry a complete valid embedded gzip `Protocol.artifact` as defined by `spec/core-protocol.md`.
 
 Verification is:
 
@@ -49,21 +49,21 @@ Verification is:
 canonical Base64 decode
 -> exact gzip artifact bytes
 -> ArtifactHash
--> PluginHash
+-> ProtocolHash
 -> bounded gunzip (<= 1 MiB)
 -> import ESM
 ```
 
-This allows a new node to recover and cache Core executable content from Genesis/chain data without requiring an external Plugin registry.
+This allows a new node to recover and cache Core executable content from Genesis/chain data without requiring an external Protocol registry.
 
-The embedded artifact remains ordinary Plugin data inside Record.data; it is not an independent bootstrap package/state format and does not alter PluginHash.
+The embedded artifact remains ordinary Protocol data inside Record.data; it is not an independent bootstrap package/state format and does not alter ProtocolHash.
 
 ## Ordinary Record baseline
 
 Outside Genesis-specific bootstrap handling:
 
 ```text
-RawRecord = plugin / pluginHash / createdBy / createdAt / data
+RawRecord = protocol / protocolHash / createdBy / createdAt / data
 RecordId = DoubleSHA256(JCS(RawRecord))
 signature = domain-separated Ed25519 signature over RecordId
 ```
@@ -72,9 +72,9 @@ signature = domain-separated Ed25519 signature over RecordId
 
 ## Optional external distribution
 
-Registry, mirror, CDN, Repo/object storage, P2P distribution or local caches may later provide the same exact gzip Plugin artifact bytes.
+Registry, mirror, CDN, Repo/object storage, P2P distribution or local caches may later provide the same exact gzip Protocol artifact bytes.
 
-These are optional distribution/availability mechanisms. They do not create a different ArtifactHash/PluginHash and are not required for MVP bootstrap.
+These are optional distribution/availability mechanisms. They do not create a different ArtifactHash/ProtocolHash and are not required for MVP bootstrap.
 
 ## Large static resources
 
@@ -102,11 +102,11 @@ Genesis #10 decides which remain current bootstrap exceptions and which remain h
 Implementations MUST NOT assume solely from Genesis that:
 
 ```text
-initial Plugins bypass Record.data
-initial Plugins are issuer-less special release entities
-Genesis constructs a separate S0 Plugin state/manifest
-Genesis identity is a hash of a Plugin-entry manifest
-ordinary Plugin release/activation logic belongs to core.plugin
+initial Protocols bypass Record.data
+initial Protocols are issuer-less special release entities
+Genesis constructs a separate S0 Protocol state/manifest
+Genesis identity is a hash of a Protocol-entry manifest
+ordinary Protocol release/activation logic belongs to core.protocol
 ordinary core.record contains if-genesis branches
 ```
 
@@ -115,29 +115,29 @@ ordinary core.record contains if-genesis branches
 Frozen before #10:
 
 ```text
-Plugin is data
-Plugin data is carried by Record
+Protocol is data
+Protocol data is carried by Record
 Genesis is a Block
-Genesis carries Plugin Records in Block.records[]
+Genesis carries Protocol Records in Block.records[]
 ordinary Record contract is defined by core.record
-initial Core Plugin Records embed exact gzip artifacts
-Plugin identity commits to ArtifactHash
-embedded vs external storage does not change PluginHash
-MVP Core bootstrap requires no external Plugin registry
+initial Core Protocol Records embed exact gzip artifacts
+Protocol identity commits to ArtifactHash
+embedded vs external storage does not change ProtocolHash
+MVP Core bootstrap requires no external Protocol registry
 ```
 
 Still pending:
 
 ```text
-historical Plugin/Protocol RecordId bootstrap exception
+historical Protocol RecordId bootstrap exception
 bootstrap createdBy/signature exception
 Genesis Header fields/signature
 Block/Genesis identity
 Root Member / Genesis Repository retention
 ```
 
-Do not implement a standalone `recognizeGenesis(initialPluginArtifacts)` path from the superseded S0 model.
+Do not implement a standalone `recognizeGenesis(initialProtocolArtifacts)` path from the superseded S0 model.
 
 ## Tests
 
-When Genesis is implemented, integration tests MUST verify initial Core Plugin Records, exact embedded artifact verification/loading, and whichever bootstrap exceptions are explicitly retained by #10.
+When Genesis is implemented, integration tests MUST verify initial Core Protocol Records, exact embedded artifact verification/loading, and whichever bootstrap exceptions are explicitly retained by #10.

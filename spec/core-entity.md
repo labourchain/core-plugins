@@ -21,7 +21,7 @@ Historical Entity contained `publicKey`, `contributors`, `protocolHash`, optiona
 
 `core.entity` defines LabourChain's public-key-rooted identity data and the shared `EntityPublicKey` representation used by Core.
 
-An Entity is not an abstract base object that Member, Repository, Organization, or other domain payloads extend. Higher-level Plugins reference an `EntityPublicKey` as a stable identity and define their own data independently.
+An Entity is not an abstract base object that Member, Repository, Organization, or other domain payloads extend. Higher-level Protocols reference an `EntityPublicKey` as a stable identity and define their own data independently.
 
 ```text
 EntityPublicKey
@@ -48,19 +48,19 @@ export interface Entity {
 
 ## Removed legacy fields
 
-### `pluginHash`
+### `protocolHash`
 
 Removed. Protocol provenance already belongs to the enclosing Record:
 
 ```text
-Record.plugin / Record.pluginHash
+Record.protocol / Record.protocolHash
 ```
 
-Repeating Plugin identity inside Entity would create a second source of truth.
+Repeating Protocol identity inside Entity would create a second source of truth.
 
 ### `type`
 
-Removed. Worker, Repository, Organization, Member relations, and other domain meanings are defined by their owning Plugins rather than a Core Entity discriminator.
+Removed. Worker, Repository, Organization, Member relations, and other domain meanings are defined by their owning Protocols rather than a Core Entity discriminator.
 
 ### `contributors[]`
 
@@ -94,7 +94,7 @@ BlockHeader.packer
 Entity.introducedBy
 ```
 
-Hash-derived identifiers such as PluginHash, RecordId, BlockId, and RecordsRoot remain digest values rather than Base58 identities.
+Hash-derived identifiers such as ProtocolHash, RecordId, BlockId, and RecordsRoot remain digest values rather than Base58 identities.
 
 Secret-key material is local-only and must never appear in Entity or other on-chain Core data.
 
@@ -109,7 +109,7 @@ Record.data = Entity
 The enclosing Record remains responsible for protocol and actor provenance:
 
 ```text
-Record.plugin / pluginHash
+Record.protocol / protocolHash
 -> protocol provenance
 
 Record.createdBy / signature
@@ -173,7 +173,7 @@ No inheritance, mixin, generic Entity base class, or schema-extension mechanism 
 
 Explicit `introducedBy: undefined` is invalid because presence declares the field and a valid Entity public key is required.
 
-Unknown historical/domain fields such as `contributors`, `pluginHash`, `type`, generic `Data`, or secret-key fields are invalid.
+Unknown historical/domain fields such as `contributors`, `protocolHash`, `type`, generic `Data`, or secret-key fields are invalid.
 
 ## Public API
 
@@ -220,7 +220,7 @@ Meaningful tests cover:
 - Entity with only `publicKey`;
 - Entity with one valid `introducedBy`;
 - malformed/wrong-length public-key references;
-- rejection of removed `contributors`, `pluginHash`, and `type` fields;
+- rejection of removed `contributors`, `protocolHash`, and `type` fields;
 - rejection of secret-key/historical generic Data fields;
 - rejection of accessor and symbol-keyed shapes.
 

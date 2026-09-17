@@ -1,13 +1,13 @@
 import { createHash, createPublicKey, verify as verifyEd25519 } from 'node:crypto'
 import { decodeBase58btc, validateEntityPublicKey, type EntityPublicKey } from './entity.js'
-import type { PluginHash } from './plugin.js'
+import type { ProtocolHash } from './protocol.js'
 
 export type { EntityPublicKey } from './entity.js'
 export type RecordId = string
 
 export interface RawRecord {
-  plugin: string
-  pluginHash: PluginHash
+  protocol: string
+  protocolHash: ProtocolHash
   createdBy: EntityPublicKey
   createdAt: string
   data: unknown
@@ -20,15 +20,15 @@ export interface Record extends RawRecord {
 
 const DIGEST_RE = /^[0-9a-f]{64}$/u
 const SIGNATURE_RE = /^[0-9a-f]{128}$/u
-const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/u
+const PROTOCOL_NAME_RE = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/u
 const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
 
 export const RECORD_SIGNING_DOMAIN = 'labourchain:record:v1:'
 const RECORD_SIGNING_DOMAIN_BYTES = Buffer.from(RECORD_SIGNING_DOMAIN, 'utf8')
 
-const RAW_RECORD_KEYS = ['plugin', 'pluginHash', 'createdBy', 'createdAt', 'data'] as const
-const RECORD_KEYS = ['id', 'plugin', 'pluginHash', 'createdBy', 'createdAt', 'signature', 'data'] as const
+const RAW_RECORD_KEYS = ['protocol', 'protocolHash', 'createdBy', 'createdAt', 'data'] as const
+const RECORD_KEYS = ['id', 'protocol', 'protocolHash', 'createdBy', 'createdAt', 'signature', 'data'] as const
 
 export class RecordError extends Error {
   constructor(message: string) {
@@ -93,21 +93,21 @@ function assertExactDataObject(
   }
 }
 
-function assertPluginReference(value: unknown): asserts value is string {
+function assertProtocolReference(value: unknown): asserts value is string {
   if (typeof value !== 'string') {
-    throw new RecordError('record.plugin must be a name@version string')
+    throw new RecordError('record.protocol must be a name@version string')
   }
-  assertWellFormedUnicode(value, 'record.plugin')
+  assertWellFormedUnicode(value, 'record.protocol')
 
   const separator = value.lastIndexOf('@')
   if (separator <= 0 || separator === value.length - 1) {
-    throw new RecordError('record.plugin must be a valid name@version declaration')
+    throw new RecordError('record.protocol must be a valid name@version declaration')
   }
 
   const name = value.slice(0, separator)
   const version = value.slice(separator + 1)
-  if (!PLUGIN_NAME_RE.test(name) || !SEMVER_RE.test(version)) {
-    throw new RecordError('record.plugin must be a valid name@version declaration')
+  if (!PROTOCOL_NAME_RE.test(name) || !SEMVER_RE.test(version)) {
+    throw new RecordError('record.protocol must be a valid name@version declaration')
   }
 }
 
@@ -230,8 +230,8 @@ function serializeJcs(value: unknown, label = 'record', ancestors = new Set<obje
 function parseRawRecord(value: unknown): RawRecord {
   assertExactDataObject(value, RAW_RECORD_KEYS, 'raw record')
 
-  assertPluginReference(value.plugin)
-  assertDigest(value.pluginHash, 'record.pluginHash')
+  assertProtocolReference(value.protocol)
+  assertDigest(value.protocolHash, 'record.protocolHash')
   const createdBy = validateCreatedBy(value.createdBy)
   if (typeof value.createdAt !== 'string') {
     throw new RecordError('record.createdAt must be a string')
@@ -239,8 +239,8 @@ function parseRawRecord(value: unknown): RawRecord {
   assertWellFormedUnicode(value.createdAt, 'record.createdAt')
 
   return {
-    plugin: value.plugin,
-    pluginHash: value.pluginHash,
+    protocol: value.protocol,
+    protocolHash: value.protocolHash,
     createdBy,
     createdAt: value.createdAt,
     data: value.data,
@@ -278,8 +278,8 @@ export function validateRecord(value: unknown): Record {
   assertExactDataObject(value, RECORD_KEYS, 'record')
 
   const raw = parseRawRecord({
-    plugin: value.plugin,
-    pluginHash: value.pluginHash,
+    protocol: value.protocol,
+    protocolHash: value.protocolHash,
     createdBy: value.createdBy,
     createdAt: value.createdAt,
     data: value.data,

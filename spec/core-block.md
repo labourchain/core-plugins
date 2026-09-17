@@ -22,7 +22,7 @@ Current boundary source:
 - `docs/record.md`
 - `docs/block.md`
 - `docs/ordering.md`
-- `docs/plugin.md`
+- `docs/protocol.md`
 
 ## Data model
 
@@ -52,19 +52,19 @@ interface BlockHeader extends RawBlockHeader {
 
 `"0"` is reserved as the source-derived first-link sentinel. Whether current Genesis uses it is finalized by the Genesis review. Ordinary non-first Blocks link to a 64-character lowercase-hex `BlockId`.
 
-`BlockHeader` is owned by `core.block`; there is no separate `core.block-header` Plugin.
+`BlockHeader` is owned by `core.block`; there is no separate `core.block-header` Protocol.
 
 ## Record baseline
 
 Ordinary Record behavior remains owned by `core.record`:
 
 ```text
-RawRecord = plugin / pluginHash / createdBy / createdAt / data
+RawRecord = protocol / protocolHash / createdBy / createdAt / data
 RecordId = DoubleSHA256(JCS(RawRecord))
 ordinary signature = domain-separated Ed25519 over RecordId
 ```
 
-`core.block` must not redefine RecordId, Record author confirmation, Plugin resolution, Entity registration policy, or protocol-specific `Record.data` validity.
+`core.block` must not redefine RecordId, Record author confirmation, Protocol resolution, Entity registration policy, or protocol-specific `Record.data` validity.
 
 ## Records root
 
@@ -183,25 +183,25 @@ Block order is confirmation/storage order.
 
 Records in one Block may have real domain dependencies, including labour Records depending on another Record's output. Core does not infer or validate those relations from array position.
 
-Labour/Asset/Project tracing, input/output consistency and business causality belong to their domain Plugins.
+Labour/Asset/Project tracing, input/output consistency and business causality belong to their domain Protocols.
 
 The duplicate-RecordId prohibition above only ensures that `recordsRoot` uniquely commits the Block's ordered RecordId sequence under the retained Merkle rule; it does not impose generic DAG or topological-order semantics.
 
-## Plugin availability is not Block validity
+## Protocol availability is not Block validity
 
-A Record declares exact protocol machine identity through `pluginHash`. Runtime/composition resolves and executes that Plugin.
+A Record declares exact protocol machine identity through `protocolHash`. Runtime/composition resolves and executes that Protocol implementation.
 
-Normal composition should make a Plugin available before Records governed by it are produced. First publishing a Plugin in the same Block as Records that depend on it is not recommended, but it is not a generic Block-validity rule.
+Normal composition should make a Protocol implementation available before Records governed by it are produced. First publishing a Protocol in the same Block as Records that depend on it is not recommended, but it is not a generic Block-validity rule.
 
 `core.block` does not maintain or validate:
 
 ```text
-PluginRelease / activePluginState / nextPluginState
+ProtocolRelease / activeProtocolState / nextProtocolState
 N -> N+1 activation
-pre-Block Plugin snapshot
-same-Block Plugin activation/inactivity
-earlier-in-same-Block Plugin activation
-Plugin dependency ordering by Block position
+pre-Block Protocol snapshot
+same-Block Protocol activation/inactivity
+earlier-in-same-Block Protocol activation
+Protocol dependency ordering by Block position
 ```
 
 ## `verifyBlock` boundary
@@ -224,10 +224,10 @@ Malformed representation or deterministic identity/commitment mismatch is an err
 `verifyBlock` does not validate:
 
 ```text
-Plugin execution or protocol-specific Record.data rules
+Protocol execution or protocol-specific Record.data rules
 Entity registration/admission state
 Labour/Asset/Project business topology
-Plugin publication/activation order
+Protocol publication/activation order
 PoA packer authorization
 previousBlock equality against a particular local chain head
 canonical-chain selection
@@ -249,55 +249,12 @@ plus Block types and `BlockError`.
 
 `blockSigningPayload` is deliberately named because the package root already exports `core.record`'s `signingPayload`.
 
-No signing helper, key generation, Plugin resolver, chain store, Entity registry or consensus-policy object belongs in `core.block`.
+No signing helper, key generation, Protocol resolver, chain store, Entity registry or consensus-policy object belongs in `core.block`.
 
 ## Genesis boundary
 
-Genesis remains a Block containing Records, including initial `Record.data = Plugin` values.
+Genesis remains a Block containing Records, including initial `Record.data = Protocol` values.
 
-Standalone `GenesisManifest`, `GenesisId`, and S0 Plugin artifact-set designs remain removed.
+Standalone `GenesisManifest`, `GenesisId`, and S0 Protocol artifact-set designs remain removed.
 
-Historical bootstrap RecordId/`createdBy`/signature exceptions, Root Member/Repository retention and exact use of the reserved `"0"` first-link sentinel are finalized by the dedicated Genesis review. Ordinary `core.block` must not grow Plugin-state, Repo-registration-state or business-state branches for Genesis.
-
-## Failure cases
-
-Reject or fail verification for at least:
-
-- malformed Block or Header shape;
-- malformed RecordId/root/previous-link/packer/signature representation;
-- duplicate RecordIds inside one Block;
-- malformed ordinary Records;
-- RecordId mismatch;
-- invalid ordinary Record author signature;
-- recomputed Records root mismatch;
-- invalid packer signature.
-
-Do not reject solely for:
-
-- empty `records[]`;
-- same-Block business dependencies;
-- same-Block Plugin publication/use;
-- Plugin activation assumptions;
-- domain DAG topology;
-- Repo registration/admission state unavailable to standalone Core validation.
-
-## Tests
-
-Meaningful tests should cover:
-
-- fixed historical-style ordered Merkle fixtures using current RecordId representation;
-- empty and single-Record roots;
-- Record order changing the root;
-- duplicate RecordId rejection, including the `[A,B,C]` vs `[A,B,C,C]` ambiguity regression;
-- fixed JCS-derived BlockId fixture;
-- raw and full Header producing the same BlockId;
-- all unsigned Header fields affecting BlockId;
-- fixed block signing payload;
-- valid and invalid Ed25519 packer signatures;
-- Records-root mismatch;
-- malformed Block/Header representation;
-- ordinary Record signature verification through `verifyBlock`;
-- acceptance of empty `records[]`;
-- absence of Plugin-activation and business-DAG rejection rules.
-
-Genesis bootstrap exceptions are tested only after the Genesis review fixes them.
+Historical bootstrap RecordId/`createdBy`/signature exceptions, Root Member/Repository retention and exact use of the reserved `"0"` first-link sentinel are finalized by the dedicated Genesis review. Ordinary `core.block` must not grow Protocol-state, Repo-registration-state or business-state branches for Genesis.

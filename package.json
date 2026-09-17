@@ -1,14 +1,14 @@
 {
-  "name": "@labourchain/core-plugins",
+  "name": "@labourchain/core-protocols",
   "version": "0.1.0",
   "private": true,
-  "description": "Deterministic core chain plugins for LabourChain",
+  "description": "Deterministic core chain protocols for LabourChain",
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "license": "MIT",
   "exports": {
     ".": "./lib/index.js",
-    "./plugin": "./lib/plugin.js",
+    "./protocol": "./lib/protocol.js",
     "./record": "./lib/record.js",
     "./entity": "./lib/entity.js",
     "./block": "./lib/block.js"

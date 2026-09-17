@@ -55,7 +55,7 @@ describe('core.entity identity data', () => {
   it('rejects removed legacy/domain fields and secret-key material', () => {
     for (const extra of [
       { contributors: [PUBLIC_KEY] },
-      { pluginHash: '11'.repeat(32) },
+      { protocolHash: '11'.repeat(32) },
       { type: 'member' },
       { secretKey: 'local-only' },
       { data: { legacy: true } },
