@@ -16,4 +16,4 @@ if (tag !== expectedTag) {
   throw new Error(`release tag ${tag} does not match generated Core version ${expectedTag}`)
 }
 
-console.log(`Release tag ${tag} matches generated Core Plugin version`)
+console.log(`Release tag ${tag} matches generated Core Protocol version`)
