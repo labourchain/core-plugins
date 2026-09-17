@@ -1,6 +1,6 @@
 # Core Protocol Runtime ABI Specification
 
-Status: target ABI for the pre-v0.1.0 Cordis runtime migration. Design rationale lives in `docs/runtime-abi.md`.
+Status: implemented pre-v0.1.0 ABI. Design rationale lives in `docs/runtime-abi.md`.
 
 ## Runtime
 
@@ -18,14 +18,17 @@ The artifact is an already-built gzip-compressed single-file ESM bundle. A Host 
 ```text
 verify ArtifactHash / ProtocolHash through core.protocol
 -> gunzip with a 1 MiB maximum output limit
--> import decompressed bytes as ESM
+-> establish sandbox / capability execution boundary
+-> evaluate/import decompressed bytes as ESM inside that boundary
 -> validate the Cordis Plugin runtime contract
--> validate semantic dependency projection
+-> validate Protocol dependency projection
 -> resolve exact Protocol dependencies
 -> ctx.plugin(plugin)
 ```
 
-A decompressed runtime larger than 1 MiB MUST be rejected before import. Protocols exceeding it SHOULD be split, or move non-executable content to Asset / Runtime.
+A decompressed runtime larger than 1 MiB MUST be rejected before ESM evaluation/import. Protocols exceeding it SHOULD be split, or move non-executable content to Asset / Runtime.
+
+Artifact identity verification does not authorize unrestricted code execution. Repo Node / Host MUST establish its execution boundary before ESM top-level code can run. This spec does not prescribe the sandbox implementation.
 
 The Host MUST NOT compile TypeScript, transpile Protocol source, install Protocol packages, run install scripts, rebundle a verified artifact, or introduce another RPC/lifecycle system around Cordis.
 
@@ -53,21 +56,33 @@ Requirements:
 - `plugin.name` MUST equal `<Protocol.name>@<Protocol.version>`;
 - `plugin.provide` MUST equal `protocol:<Protocol.name>@<Protocol.version>`;
 - `plugin.apply` MUST be callable;
-- `plugin.inject` MUST be a Cordis-compatible Inject declaration and MUST contain every projected chain semantic dependency service name;
-- runtime validation compares required service names after normalizing Cordis array/object Inject forms;
-- additional runtime-only inject services MAY be present and do not enter ProtocolHash.
+- `plugin.inject` MUST be a Cordis-compatible Inject declaration;
+- runtime validation MUST normalize Cordis array/object Inject forms to service names;
+- `protocol:*` inject service names MUST exactly equal the projection of `Protocol.dependencies[]`;
+- additional non-Protocol runtime services MAY be present in `plugin.inject` without becoming `ProtocolDependency` entries.
 
 `plugin.provide` is the Cordis metadata declaration of the capability. `plugin.apply()` MUST perform the actual Fiber-owned registration of the same canonical service through Cordis, e.g. `ctx.provide(serviceKey, implementation)`.
 
 The artifact MUST NOT expose the pure Core API namespace as additional ESM exports. Pure package APIs remain available through package subpaths and are wrapped behind the Protocol service inside the executable artifact.
 
-## Cordis ownership
+## Cordis ownership and lifecycle
 
 Protocol artifacts MUST NOT bundle a private Cordis runtime. Cordis is supplied by the Host and is the only plugin/dependency/lifecycle system.
 
 The executable may be a structurally valid Cordis object Plugin without importing Cordis at runtime; Host-side validation/mounting uses the Host's Cordis implementation.
 
 Current Core/Repository integration targets the `@deepseek-ai/cordis` runtime family already used by the Repository host.
+
+Runtime smoke verification MUST cover Plugin reversibility:
+
+```text
+mount Plugin Fiber
+-> canonical Protocol service becomes available
+-> dispose that Plugin Fiber
+-> canonical Protocol service is no longer available
+```
+
+Disposing only the root test Context after a successful mount is not sufficient lifecycle verification.
 
 ## Protocol identity
 
@@ -95,6 +110,8 @@ DoubleSHA256(exact gzip artifact bytes)
 
 `artifactHash` MUST participate in ProtocolHash. Optional embedded `artifact` MUST be canonical RFC 4648 Base64 of the exact gzip bytes and MUST NOT participate in ProtocolHash.
 
+Executable runtime metadata such as non-Protocol `plugin.inject` services is part of the artifact bytes and therefore participates in executable identity through `artifactHash`; it is not represented as a separate structured Protocol field.
+
 Therefore embedded, cached, mirrored, or otherwise resolved copies of the same exact bytes MUST identify the same Protocol.
 
 ## Dependencies
@@ -109,18 +126,23 @@ For each dependency:
 protocol:<name>@<version>
 ```
 
-The projection relation is:
+For the reserved `protocol:` service namespace:
 
 ```text
-project(Protocol.dependencies[]) ⊆ normalizedServiceNames(plugin.inject)
+projectedProtocolServices = project(Protocol.dependencies[])
+runtimeProtocolInjects = all normalized plugin.inject names beginning with "protocol:"
+
+runtimeProtocolInjects == projectedProtocolServices
 ```
 
-This projection MUST be validated by:
+This equality MUST be validated by:
 
 - Protocol Dev SDK / current release build gate before publishing the artifact;
 - Repo Node / Host loader after importing the verified artifact and before mounting it.
 
 `core.protocol` MUST NOT perform this projection validation. It validates `dependencies[]` only as chain data and Protocol identity input.
+
+Non-Protocol Cordis services such as storage/logger MAY be injected additionally. They do not receive `ProtocolDependency` entries.
 
 Initial `core.protocol`, `core.entity`, `core.record`, and `core.block` artifacts use `dependencies = []`; their source-level imports are bundled into the single executable artifact.
 
@@ -137,7 +159,7 @@ verifyArtifact
 verifyEmbeddedArtifact
 ```
 
-Cordis Plugin/module validation, Inject normalization, dependency projection, build/package construction, and mounting helpers MUST stay outside `core.protocol`.
+Cordis Plugin/module validation, Inject normalization, dependency projection, build/package construction, sandboxing, and mounting helpers MUST stay outside `core.protocol`.
 
 ## Build profile
 
@@ -150,7 +172,7 @@ Artifact generation MUST:
 - emit exactly the `plugin` runtime export;
 - emit no sourcemap or legal-comment side file;
 - reject a decompressed ESM bundle larger than 1 MiB;
-- validate `plugin` metadata/shape and dependency projection before release;
+- validate `plugin` metadata/shape and exact `protocol:*` dependency projection before release;
 - gzip the bundle at level 9;
 - normalize the gzip header to no optional fields, `MTIME = 0`, and `OS = 255` before hashing;
 - set `artifactHash` from the exact gzip bytes;
@@ -164,21 +186,24 @@ The gzip bytes themselves are the published executable artifact bytes. Reproduci
 `pnpm build:artifacts` MUST, for all four Core Protocols:
 
 1. build one thin Cordis Plugin ESM bundle and reject it if it exceeds 1 MiB;
-2. import the uncompressed built module for build-time runtime-contract validation;
+2. import the uncompressed locally built Core module for build-time runtime-contract validation;
 3. require the ESM namespace to contain exactly `plugin`;
-4. require canonical `plugin.name`, `plugin.provide`, callable `plugin.apply`, valid Inject form, and dependency projection;
+4. require canonical `plugin.name`, `plugin.provide`, callable `plugin.apply`, valid Inject form, and exact `protocol:*` dependency projection;
 5. smoke-mount the imported plugin through the Host Cordis runtime and verify the canonical provided service becomes available;
-6. dispose the mounted Fiber/Context cleanly;
-7. gzip the bundle and normalize gzip metadata;
-8. calculate `artifactHash` from the exact gzip bytes;
-9. build the embedded Protocol value with `runtime.kind = "cordis-js-esm"`;
-10. pass `verifyEmbeddedArtifact()`;
-11. bounded-gunzip the embedded artifact with a 1 MiB maximum output;
-12. report decompressed runtime size, gzip artifact size, and Base64 wire size.
+6. dispose that Plugin Fiber and verify the canonical service is no longer available;
+7. dispose the root test Context cleanly;
+8. gzip the bundle and normalize gzip metadata;
+9. calculate `artifactHash` from the exact gzip bytes;
+10. build the embedded Protocol value with `runtime.kind = "cordis-js-esm"`;
+11. pass `verifyEmbeddedArtifact()`;
+12. bounded-gunzip the embedded artifact with a 1 MiB maximum output;
+13. report decompressed runtime size, gzip artifact size, and Base64 wire size.
 
 Release verification MUST independently reread and re-import emitted artifacts from disk rather than trusting only the build-time module object.
 
-Regression tests MUST verify both that exactly 1 MiB is accepted and that a small gzip input expanding beyond 1 MiB is rejected before import.
+Direct import in the Core build/release smoke applies only to repository-owned Core fixtures. Repo Node security policy for arbitrary external Protocols MUST place ESM evaluation inside the Host execution boundary described above.
+
+Regression tests MUST verify both that exactly 1 MiB is accepted and that a small gzip input expanding beyond 1 MiB is rejected before ESM evaluation/import.
 
 ## Distribution boundary
 
@@ -190,7 +215,7 @@ The release artifact filename is:
 
 The filename is release metadata and does not participate in ProtocolHash.
 
-`docs/`, `spec/`, tests, source history, migration material, build inputs, human description, release notes, registry metadata, and package-manager metadata MUST NOT become part of Protocol runtime identity merely because they accompany a release.
+`docs/`, `spec/`, tests, source history, migration material, build inputs, human description, release notes, registry metadata, and package-manager metadata MUST NOT become separate Protocol runtime identity fields merely because they accompany a release.
 
 Build/bundle/compression/reproducible-build helpers belong to Protocol Dev SDK #23. Release/discovery channels belong to #24. Neither is a runtime dependency of `core.protocol`.
 
