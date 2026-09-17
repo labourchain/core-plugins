@@ -1,8 +1,8 @@
 # LabourChain Core Protocols
 
-`@labourchain/core-protocols` contains the deterministic Core Protocol primitives for LabourChain.
+[English](README.en.md)
 
-Current Core Protocols:
+`@labourchain/core-protocols` 提供 LabourChain 的确定性 Core Protocol primitives：
 
 ```text
 core.protocol
@@ -11,40 +11,40 @@ core.record
 core.block
 ```
 
-The package keeps chain-facing Protocol semantics separate from Cordis runtime composition:
+LabourChain 明确区分链上 Protocol 与 Cordis runtime Plugin：
 
 ```text
 LabourChain Protocol
-= stable, versioned chain semantics + exact executable identity
+= 稳定、版本化的链上语义 + exact executable identity
 
 Cordis Plugin
 = runtime composition / dependency injection / lifecycle
 ```
 
-## Current runtime direction
+## 当前 Runtime 方向
 
-Before `v0.1.0`, Core Protocol executable artifacts are being aligned to the accepted `cordis-js-esm` ABI:
+在 `v0.1.0` 之前，Core Protocol executable artifact 收敛到：
 
 ```text
 runtime.kind = "cordis-js-esm"
 runtime.abi = 1
 ```
 
-The final artifact is an already-built single gzip ESM bundle with one explicit runtime export:
+最终 artifact 是已经构建完成的 single gzip ESM bundle，并且只有一个显式 runtime module export：
 
 ```text
 plugin
 ```
 
-and release filenames use:
+Release filename 使用：
 
 ```text
 <protocol>-<version>.cordis-js-esm.gz
 ```
 
-Repo Nodes verify the exact artifact, bounded-gunzip it, import the ESM, validate its Cordis Plugin contract and semantic dependency projection, then mount it through the Host Cordis Context. Nodes do not rebuild Protocol source.
+Repo Node 获取 exact artifact 后负责校验、bounded gunzip、ESM import、Cordis Plugin contract 与 semantic dependency projection 校验，然后通过 Host Cordis Context 挂载；Node 不从源码重新构建 Protocol。
 
-`core.protocol` itself remains a deterministic chain-data/identity primitive. It validates `dependencies[]` as Protocol data but does not inspect `plugin.inject`; SDK/build tooling and the Node loader own that descriptor-to-executable validation.
+`core.protocol` 自身仍是确定性的链数据/identity primitive。它验证 `dependencies[]` 作为 Protocol data 和 Protocol identity 输入的合法性，但不导入 artifact，也不读取 `plugin.inject`；descriptor 与 executable 的 dependency projection 校验由 SDK/build tooling 与 Node loader 负责。
 
 ## Package exports
 
@@ -56,32 +56,48 @@ Repo Nodes verify the exact artifact, bounded-gunzip it, import the ESM, validat
 @labourchain/core-protocols/block
 ```
 
-The package subpaths expose pure deterministic APIs. The executable Protocol artifacts wrap those APIs behind Cordis Plugin services rather than exposing arbitrary ESM namespaces.
+各 subpath 保持纯确定性 API。Executable Protocol artifact 通过 thin Cordis Plugin wrapper 把所需能力注册为 Cordis service，而不是把 package API 任意暴露成 ESM runtime namespace。
 
-## Verification
+| 任务 | Protocol / import | 主要公共 API | 不负责 |
+| --- | --- | --- | --- |
+| 验证 Protocol descriptor、ArtifactHash、ProtocolHash 与 exact artifact | `core.protocol` / `@labourchain/core-protocols/protocol` | `validateProtocol`, `artifactHash`, `protocolHash`, `verifyArtifact`, `verifyEmbeddedArtifact` | build、fetch、Cordis module loading、inject projection、registry、activation |
+| 处理链级 Ed25519 public-key identity | `core.entity` / `@labourchain/core-protocols/entity` | `validateEntity`, `validateEntityPublicKey`, `encodeBase58btc`, `decodeBase58btc` | registration state、Member/Repository、权限或信任 |
+| 规范化/派生/验证 Record，并验证作者签名 | `core.record` / `@labourchain/core-protocols/record` | `canonicalRecord`, `recordId`, `signingPayload`, `validateRawRecord`, `validateRecord`, `verifySignature` | Protocol 执行、私钥签名、业务 DAG |
+| 计算 RecordsRoot / BlockId，并验证 Block/Header confirmation | `core.block` / `@labourchain/core-protocols/block` | `recordsRoot`, `blockId`, `blockSigningPayload`, `verifyHeader`, `verifyBlock` | PoA 授权、canonical-chain policy、业务顺序 |
+
+```ts
+import { verifyArtifact } from '@labourchain/core-protocols/protocol'
+import { validateEntityPublicKey } from '@labourchain/core-protocols/entity'
+import { recordId, verifySignature } from '@labourchain/core-protocols/record'
+import { recordsRoot, verifyBlock } from '@labourchain/core-protocols/block'
+```
+
+## 验证
 
 ```bash
 pnpm install
 pnpm check
 ```
 
-`pnpm check` covers TypeScript validation, tests, Core artifact generation, package-export smoke checks, and release-asset verification.
+`pnpm check` 覆盖 TypeScript 校验、测试、Core artifact 生成、package exports smoke 与 release asset verification。
 
-## Documentation
+## 文档
 
-Start with:
+主要入口：
 
-- [`docs/README.md`](docs/README.md) — documentation map and current design status;
-- [`docs/architecture.md`](docs/architecture.md) — Core composition and boundaries;
-- [`docs/protocol.md`](docs/protocol.md) — Protocol identity and artifact model;
-- [`docs/runtime-abi.md`](docs/runtime-abi.md) — Cordis executable runtime contract;
-- [`docs/record.md`](docs/record.md) — Record identity and signatures;
-- [`docs/block.md`](docs/block.md) — Block confirmation primitives;
-- [`docs/genesis.md`](docs/genesis.md) — Genesis composition boundary;
-- [`spec/`](spec/) — implementation specifications projected from reviewed docs.
+- [`docs/README.md`](docs/README.md)：当前设计状态与文档地图；
+- [`docs/architecture.md`](docs/architecture.md)：Core 组合关系与边界；
+- [`docs/protocol.md`](docs/protocol.md)：Protocol identity 与 artifact model；
+- [`docs/runtime-abi.md`](docs/runtime-abi.md)：Cordis executable runtime contract；
+- [`docs/record.md`](docs/record.md)：Record identity 与签名；
+- [`docs/block.md`](docs/block.md)：Block confirmation primitives；
+- [`docs/genesis.md`](docs/genesis.md)：Genesis composition boundary；
+- [`spec/`](spec/)：从已审查 docs 投影出的 implementation specs。
 
-Historical source facts are preserved separately in [`docs/source-baseline.md`](docs/source-baseline.md).
+历史 Source Facts 保留在 [`docs/source-baseline.md`](docs/source-baseline.md)。
 
-## Status
+## Release
 
-`v0.1.0` has not been tagged. Protocol/Cordis runtime alignment is tracked in issue #31 and must be completed before the first release.
+当前外部分发使用 GitHub Releases，不发布 npm package。最终 `v0.1.0` release contract 将发布四个 exact `.cordis-js-esm.gz` Core Protocol artifacts、对应 descriptor JSON 与 `manifest.json`；消费方仍必须在加载前自行验证 ArtifactHash / ProtocolHash。
+
+`v0.1.0` 尚未创建 tag。Protocol/Cordis runtime alignment 由 issue #31 跟踪，并需在首个 release 前完成。
