@@ -38,6 +38,12 @@ runtime.abi = 1
 plugin
 ```
 
+最终 release artifact filename 固定为：
+
+```text
+<protocol>-<version>.cordis-js-esm.gz
+```
+
 Node 获取 exact artifact 后执行：
 
 ```text
@@ -61,7 +67,20 @@ ProtocolHash 承诺 `name / version / runtime / dependencies / artifactHash`。�
 
 链上 `Protocol.dependencies[]` 记录 exact semantic dependency；每个 dependency 投影为 Cordis required service key `protocol:<name>@<version>`。`plugin.inject` 实际控制 runtime readiness，并可以额外包含不进入 ProtocolHash 的 runtime-only services。
 
-Protocol implementation 通过 Cordis Service / Context API 暴露能力；artifact 不通过任意 ESM exports 暴露 API，也不 bundle 第二份 Cordis runtime。
+验证边界明确分开：
+
+```text
+core.protocol
+-> 只验证 dependencies[] 作为链上数据及 Protocol identity 的合法性
+
+SDK / release build gate
+-> 验证 dependencies[] -> plugin.inject projection
+
+Repo Node / Host loader
+-> 加载时再次验证 projection，并按 exact ProtocolHash 解析依赖
+```
+
+Protocol implementation 通过 Cordis Plugin metadata 与 Service / Context API 显式声明并提供能力；artifact 不通过任意 ESM exports 暴露 API，也不 bundle 第二份 Cordis runtime。
 
 1 MiB 是解压后 runtime hard limit，也是 Protocol 工程边界；超过该规模应优先拆 Protocol 或把非执行内容移入 Asset / Runtime。约 500 KiB compressed artifact 只属于 Dev SDK/build tooling warning，不是 Core validity。
 
@@ -133,11 +152,11 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 ### [`runtime-abi.md`](runtime-abi.md)
 
-定义 `cordis-js-esm` ABI v1：ready-to-mount single gzip artifact、显式 `plugin` export、Protocol dependency -> Cordis `inject` projection、1 MiB bounded gunzip，以及 Host/Node 不重新构建 Protocol 的边界。
+定义 `cordis-js-esm` ABI v1：ready-to-mount single gzip artifact、显式 `plugin` export、Protocol dependency -> Cordis `inject` projection、验证所有权、1 MiB bounded gunzip，以及 Host/Node 不重新构建 Protocol 的边界。
 
 ### [`release.md`](release.md)
 
-定义当前 GitHub Release-only 发行流程、release assets、tag/version 规则、固定发行构建环境、identity regression gate 与 npm 延后边界。现有 release 实现仍使用 pre-#31 `js-esm` artifact naming，待 docs/spec runtime migration 落地后同步修改。
+定义当前 GitHub Release-only 发行流程、`.cordis-js-esm.gz` release assets、tag/version 规则、固定发行构建环境、identity regression gate 与 npm 延后边界。
 
 ### [`record.md`](record.md)
 
@@ -166,7 +185,7 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 - `core.entity` 已实现；
 - ordinary `core.block` confirmation primitives 已实现；
 - 历史 `js-esm` / bounded gzip artifact packaging 已实现，但 #31 已在 docs 层接受迁移到 `cordis-js-esm`；
-- #31 下一步是把 explicit `plugin` export、dependency projection 与 ready-to-mount artifact contract 投影到 spec/implementation；
+- #31 下一步是把 explicit `plugin` export、`provide`/`inject` runtime contract、dependency projection 与 `.cordis-js-esm.gz` naming 投影到 spec/implementation；
 - Protocol Dev SDK 由 #23 延后到 Core/Repo 边界完成后；
 - GitHub Release-only release/distribution 由 #24 收敛；
 - Genesis #10 只继续收敛 deterministic assembly/fixture，不重新打开 ordinary Record/Block identity rules。
