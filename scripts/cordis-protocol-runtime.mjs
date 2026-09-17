@@ -62,11 +62,24 @@ export function validateCordisProtocolModule(protocol, namespace) {
   }
 
   const injectNames = normalizeInjectNames(plugin.inject)
-  for (const dependency of protocol.dependencies) {
-    const requiredService = `protocol:${dependency.name}@${dependency.version}`
+  const expectedProtocolServices = new Set(
+    protocol.dependencies.map(
+      (dependency) => `protocol:${dependency.name}@${dependency.version}`,
+    ),
+  )
+
+  for (const requiredService of expectedProtocolServices) {
     if (!injectNames.has(requiredService)) {
       throw new Error(
         `${protocol.name} plugin.inject is missing semantic dependency ${requiredService}`,
+      )
+    }
+  }
+
+  for (const injectedService of injectNames) {
+    if (injectedService.startsWith('protocol:') && !expectedProtocolServices.has(injectedService)) {
+      throw new Error(
+        `${protocol.name} plugin.inject contains undeclared Protocol dependency ${injectedService}`,
       )
     }
   }
@@ -77,14 +90,19 @@ export function validateCordisProtocolModule(protocol, namespace) {
 export async function smokeMountCordisProtocol(protocol, plugin) {
   const context = new Context()
   const service = protocolServiceKey(protocol)
+  const fiber = context.plugin(plugin)
 
   try {
-    const fiber = context.plugin(plugin)
     await fiber
     if (context.get(service) === undefined) {
       throw new Error(`${protocol.name} plugin did not provide ${service}`)
     }
+
+    await fiber.dispose()
+    if (context.get(service) !== undefined) {
+      throw new Error(`${protocol.name} plugin did not release ${service} on Fiber disposal`)
+    }
   } finally {
-    await Promise.resolve(context.fiber.dispose())
+    await context.fiber.dispose()
   }
 }
