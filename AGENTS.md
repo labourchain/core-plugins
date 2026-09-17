@@ -86,7 +86,7 @@ Do not add a second agent manifest, AI metadata schema, runtime discovery docume
 
 Core confirms Records in Blocks. It does not directly own Labour, Asset, Project, Repository, Member, SDK, package publishing, persistence, network governance, UI, or business DAG semantics.
 
-`core.protocol` owns deterministic Protocol chain-data validation, ArtifactHash/ProtocolHash and exact artifact verification. It does **not** own ESM import, Cordis Plugin shape validation, `plugin.inject`, dependency projection, Protocol dependency resolution, runtime availability, or mounting.
+`core.protocol` owns deterministic Protocol chain-data validation, ArtifactHash/ProtocolHash and exact artifact verification. It does **not** own ESM import, Cordis Plugin shape validation, `plugin.inject`, dependency projection, Protocol dependency resolution, runtime availability, sandboxing, or mounting.
 
 The accepted ABI boundary is:
 
@@ -96,15 +96,21 @@ runtime.abi = 1
 release artifact = <protocol>-<version>.cordis-js-esm.gz
 ```
 
-The imported ESM exposes exactly `plugin`. The Host/build gate validates canonical `plugin.name`, `plugin.provide`, callable `plugin.apply`, Cordis Inject form, and semantic dependency projection. `apply()` performs actual Fiber-owned `ctx.provide()` registration.
+The imported ESM exposes exactly `plugin`. The SDK/build gate and Repo Node/Host loader validate canonical `plugin.name`, `plugin.provide`, callable `plugin.apply`, Cordis Inject form, and Protocol dependency projection. `apply()` performs actual Fiber-owned `ctx.provide()` registration.
 
-`Protocol.dependencies[]` is chain-facing exact semantic dependency data. `core.protocol` validates its fields, exact SemVer, ProtocolHash digest, uniqueness, and canonical order only. The SDK/build gate and Repo Node/Host loader validate:
+`Protocol.dependencies[]` is chain-facing exact Protocol dependency data. `core.protocol` validates its fields, exact SemVer, ProtocolHash digest, uniqueness, and canonical order only.
+
+For the reserved `protocol:` service namespace, Cordis-aware boundaries validate:
 
 ```text
-project(Protocol.dependencies[]) ⊆ normalizedServiceNames(plugin.inject)
+all protocol:* names in plugin.inject
+==
+project(Protocol.dependencies[])
 ```
 
-The Host separately resolves every dependency by exact `protocolHash`. Never move this Cordis-aware projection validation into `core.protocol`.
+Non-Protocol runtime services may be injected additionally without becoming `ProtocolDependency` entries. Because inject metadata is part of executable bytes, it contributes to executable identity through ArtifactHash.
+
+The Host separately resolves every chain dependency by exact `protocolHash`. Never move this Cordis-aware projection validation into `core.protocol`; the generalized SDK rule is tracked in #23.
 
 Core does not provide private-key signing, Protocol build/publish/resolution/loading, Entity registration state, Repository/Member authorization, PoA authorization, canonical-chain selection, storage/network transport, or Cordis runtime lifecycle unless a reviewed Core spec explicitly adds such responsibility.
 
@@ -112,16 +118,19 @@ Keep Block confirmation order distinct from business relations and runtime arriv
 
 Keep Protocol semantics host-agnostic. Process startup, Host Cordis Context, artifact cache/fetch, persistence, transport, secret-key storage, packer authorization, sandbox/capability policy, and observability belong outside Core.
 
+A Repo Node must establish its sandbox/capability execution boundary before evaluating untrusted Protocol ESM. Artifact identity verification is not a substitute for execution isolation.
+
 Protocol artifacts must not bundle another Cordis runtime. Do not introduce a LabourChain Plugin Manager, Runner, Service Container, or dependency graph parallel to Cordis.
 
 ## Current review gates
 
 Do not silently resolve these boundaries while working on unrelated changes:
 
-- **Protocol/Cordis runtime alignment #31** — docs/spec now define `cordis-js-esm` ABI v1. Implementation work is limited to projecting that accepted contract into Core runtime descriptors, generated thin Plugin artifacts, build/release validation, release naming/tests, and intentional identity fixture updates. Do not expand #31 into the full SDK or Node architecture;
 - **Genesis #10** — Genesis remains an ordinary Block of ordinary Records; remaining work is deterministic bootstrap composition/fixture design, not reopening ordinary Record/Block identity rules;
-- **Protocol Dev SDK #23** — the generalized developer-side SDK remains deferred. #31 may implement only the current Core build gate needed to verify its generated artifacts;
-- **Release/distribution #24** — GitHub Release-only is already defined. Runtime migration may update filenames/verifier expectations but must not add another distribution channel.
+- **Protocol Dev SDK #23** — generalized developer-side build tooling remains deferred. It owns Cordis-aware build validation, including exact `protocol:*` inject projection; do not move that logic into `core.protocol`;
+- **Release/distribution #24** — GitHub Release-only is already defined; do not add another distribution channel without a reviewed requirement.
+
+Protocol/Cordis runtime alignment #31 is completed and defines the current `cordis-js-esm` ABI v1 contract.
 
 ## Documentation discipline
 
@@ -139,4 +148,4 @@ Do not add an operating-system matrix unless concrete platform-specific behavior
 
 Tests protect meaningful contracts and demonstrated regressions. Coverage percentage, job count, and platform count are not quality goals by themselves.
 
-For #31, meaningful runtime regression coverage includes exact `plugin` export/metadata validation, actual Cordis mount/provide behavior, dependency projection outside `core.protocol`, bounded gunzip, canonical release filenames, and frozen Core executable identities.
+Meaningful runtime regression coverage includes exact `plugin` export/metadata validation, exact `protocol:*` dependency projection outside `core.protocol`, actual Cordis mount/provide behavior, Plugin Fiber disposal removing the provided service, bounded gunzip, canonical release filenames, and frozen Core executable identities.
