@@ -125,9 +125,9 @@ artifact absent
 
 MVP Genesis Core Protocol Records 应 embedded 完整 artifact，以避免 bootstrap 依赖外部 registry；普通 Protocol 是否 embedded 可以由更高层发行/存储策略决定，不改变 Protocol identity。
 
-## Chain semantic dependency
+## Chain Protocol dependency
 
-`dependencies[]` 表达链上 Protocol 语义依赖，而不是普通 Cordis runtime service dependency。
+`dependencies[]` 只表达该 Protocol 依赖的其他链上 Protocol，不是 implementation 的完整 runtime dependency list。
 
 每个 dependency 精确记录：
 
@@ -139,11 +139,13 @@ protocolHash
 
 其中 `protocolHash` 是权威 exact dependency identity。
 
-运行时 artifact 必须把 chain Protocol dependencies 映射为 canonical Protocol service dependency `protocol:<name>@<version>`。Host 按 `protocolHash` 解析并验证 exact implementation；Cordis `inject` 决定所需 service 未就绪时 Fiber 是否可以运行。
+运行时 artifact 必须把每个 chain Protocol dependency 映射为 canonical Protocol service dependency `protocol:<name>@<version>`。Host 按 `protocolHash` 解析并验证 exact implementation；Cordis `inject` 决定所需 service 未就绪时 Fiber 是否可以运行。
 
-Descriptor 与 `plugin.inject` 的 exact projection 规则由 `runtime-abi.md` 定义，并由 Protocol Dev SDK 与 Repo Node/Host loader 验证。当前 Core artifact build/release 不调用该通用 validator。
+`plugin.inject` 描述 Plugin 的全部运行时依赖，因此允许额外包含不上链的公共设施，例如 DSH、agent loop、storage、logger。它们不需要也不应该仅因为被 inject 就写入 `Protocol.dependencies[]`。
 
-`plugin.inject` 可以额外包含 storage/logger 等非 Protocol runtime services。它们不写入 `Protocol.dependencies[]`；它们作为 executable artifact 的一部分，通过 `artifactHash` 参与 ProtocolHash。
+因此 descriptor/runtime 的最低一致性规则是 `project(Protocol.dependencies[]) ⊆ plugin.inject`。Protocol Dev SDK 与 Repo Node/Host loader 只验证声明的链上 dependency 在 runtime inject 中存在，不反向把其他 inject 解释为链上 dependency。当前 Core artifact build/release 不调用该通用 validator。
+
+额外 runtime inject 作为 executable artifact 的一部分，通过 `artifactHash` 参与 ProtocolHash，但没有独立的链上 `ProtocolDependency` 字段。
 
 ### Validation ownership
 
@@ -155,10 +157,10 @@ Descriptor 与 `plugin.inject` 的 exact projection 规则由 `runtime-abi.md` �
 
 ```text
 Protocol Dev SDK
--> validate descriptor <-> plugin.inject dependency projection before publishing
+-> require every chain Protocol dependency to appear in plugin.inject before publishing
 
 Repo Node / Host loader
--> repeat the same validation on imported verified artifact
+-> repeat the same one-way validation on imported verified artifact
 -> resolve each dependency by exact ProtocolHash
 ```
 
