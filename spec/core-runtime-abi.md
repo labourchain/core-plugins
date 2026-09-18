@@ -57,9 +57,9 @@ Requirements:
 - `plugin.provide` MUST equal `protocol:<Protocol.name>@<Protocol.version>`;
 - `plugin.apply` MUST be callable;
 - `plugin.inject` MUST be a Cordis-compatible Inject declaration;
-- runtime validation MUST normalize Cordis array/object Inject forms to service names;
-- `protocol:*` inject service names MUST exactly equal the projection of `Protocol.dependencies[]`;
-- additional non-Protocol runtime services MAY be present in `plugin.inject` without becoming `ProtocolDependency` entries.
+- Cordis/runtime loading MUST normalize Inject to service names before dependency projection validation;
+- every `Protocol.dependencies[]` entry MUST project to a required runtime service present in normalized inject names;
+- `plugin.inject` MAY contain additional off-chain runtime Plugin/Service dependencies such as DSH, agent loop, storage, or logger without creating `ProtocolDependency` entries.
 
 `plugin.provide` is the Cordis metadata declaration of the capability. `plugin.apply()` MUST perform the actual Fiber-owned registration of the same canonical service through Cordis, e.g. `ctx.provide(serviceKey, implementation)`.
 
@@ -116,7 +116,7 @@ Therefore embedded, cached, mirrored, or otherwise resolved copies of the same e
 
 ## Dependencies
 
-`dependencies[]` describes independently resolved chain-level semantic Protocol dependencies. `protocolHash` is the authoritative exact dependency identity. Dependency names MUST be unique and canonical identity MUST sort dependencies by name using UTF-8 byte order.
+`dependencies[]` describes only independently resolved on-chain Protocol dependencies. It is not the complete runtime Plugin dependency list. `protocolHash` is the authoritative exact dependency identity. Dependency names MUST be unique and canonical identity MUST sort dependencies by name using UTF-8 byte order.
 
 For each dependency:
 
@@ -126,23 +126,20 @@ For each dependency:
 protocol:<name>@<version>
 ```
 
-For the reserved `protocol:` service namespace:
+The runtime consistency rule is one-way:
 
 ```text
-projectedProtocolServices = project(Protocol.dependencies[])
-runtimeProtocolInjects = all normalized plugin.inject names beginning with "protocol:"
-
-runtimeProtocolInjects == projectedProtocolServices
+project(Protocol.dependencies[]) ⊆ normalizedServiceNames(plugin.inject)
 ```
 
-This equality MUST be validated by:
+Every on-chain Protocol dependency MUST have a corresponding runtime service dependency. The reverse direction is intentionally not required because `plugin.inject` may also contain off-chain public runtime facilities such as DSH, agent loop, storage, or logger.
+
+This inclusion MUST be validated by:
 
 - Protocol Dev SDK before publishing the artifact;
 - Repo Node / Host loader after importing the verified artifact and before mounting it.
 
-`core.protocol` MUST NOT perform this projection validation. It validates `dependencies[]` only as chain data and Protocol identity input.
-
-Non-Protocol Cordis services such as storage/logger MAY be injected additionally. They do not receive `ProtocolDependency` entries.
+`core.protocol` MUST NOT perform this projection validation or inspect extra inject services. It validates `dependencies[]` only as chain data and Protocol identity input.
 
 Initial `core.protocol`, `core.entity`, `core.record`, and `core.block` artifacts use `dependencies = []`; their source-level imports are bundled into the single executable artifact.
 
@@ -201,7 +198,7 @@ The gzip bytes themselves are the published executable artifact bytes. Reproduci
 
 Release verification MUST independently reread and re-import emitted artifacts from disk rather than trusting only the build-time module object.
 
-A reusable dependency projection validator MAY be retained under `src/utils` for later SDK/Repo use, but current Core artifact build/release MUST NOT call it. It is not part of any Core Protocol artifact.
+A reusable dependency projection validator MAY be retained under `src/utils` for later SDK/Repo use. It MUST consume already-normalized runtime service names, check only that all chain dependencies are present, and MUST NOT implement a second Cordis Inject parser. Current Core artifact build/release MUST NOT call it. It is not part of any Core Protocol artifact.
 
 Direct import in the Core build/release smoke applies only to repository-owned Core fixtures. Repo Node security policy for arbitrary external Protocols MUST place ESM evaluation inside the Host execution boundary described above.
 
