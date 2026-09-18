@@ -19,11 +19,11 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "build:artifacts": "pnpm run build && node scripts/build-core-artifacts.mjs",
+    "build:artifacts": "pnpm run build && pnpm --filter @labourchain/protocol-dev-sdk build && node scripts/build-core-artifacts.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "verify:release": "node scripts/verify-release-artifacts.mjs",
-    "check": "pnpm run typecheck && pnpm run test && pnpm run build:artifacts && node scripts/smoke-package-exports.mjs && pnpm run verify:release"
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm --filter @labourchain/protocol-dev-sdk check && node scripts/build-core-artifacts.mjs && node scripts/smoke-package-exports.mjs && pnpm run verify:release"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
