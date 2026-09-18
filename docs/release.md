@@ -88,8 +88,7 @@ manifest.json
 -> bounded gunzip
 -> import repository-owned Core fixture ESM
 -> require namespace exports exactly `plugin`
--> validate plugin.name / provide / inject / apply
--> require protocol:* injects == project(Protocol.dependencies[])
+-> validate plugin.name / provide / explicit inject / apply
 -> mount through Host Cordis
 -> verify canonical service is provided
 -> dispose that Plugin Fiber
@@ -102,8 +101,8 @@ manifest.json
 这里要区分验证所有权：
 
 - `core.protocol` 只负责 descriptor、ProtocolHash、ArtifactHash 与 embedded artifact identity；
-- release/build gate 负责同时检查 descriptor 与 executable module，因此在这里验证 Cordis Plugin runtime contract、exact `protocol:*` dependency projection 与 Plugin lifecycle；
-- Repo Node 加载时必须再次做 runtime contract/projection 检查，并按 exact dependency ProtocolHash 解析依赖。
+- release/build gate 负责检查当前 Core executable module 的 Cordis Plugin runtime contract 与 Plugin lifecycle；
+- Protocol Dev SDK 与 Repo Node 分别负责 descriptor ↔ executable dependency projection；Repo Node 还必须按 exact dependency ProtocolHash 解析依赖。当前 Core release verifier 不调用通用 projection validator。
 
 Core release verifier 直接 import 的是本仓库自己生成的 Core fixtures。Repo Node 处理任意外部 Protocol 时，必须在 ESM 顶层代码执行之前建立自己的 sandbox/capability execution boundary；ArtifactHash / ProtocolHash verification 不替代该执行边界。
 
