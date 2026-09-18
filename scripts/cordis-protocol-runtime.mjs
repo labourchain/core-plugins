@@ -28,8 +28,12 @@ export function validateCordisProtocolModule(protocol, namespace) {
   if (plugin.provide !== expectedService) {
     throw new Error(`${protocol.name} plugin.provide must be ${expectedService}`)
   }
-  if (!Object.prototype.hasOwnProperty.call(plugin, 'inject')) {
-    throw new Error(`${protocol.name} plugin.inject must be explicitly declared`)
+  const inject = plugin.inject
+  if (
+    !Array.isArray(inject) &&
+    (typeof inject !== 'object' || inject === null)
+  ) {
+    throw new Error(`${protocol.name} plugin.inject must be a Cordis array or object declaration`)
   }
   if (typeof plugin.apply !== 'function') {
     throw new Error(`${protocol.name} plugin.apply must be callable`)
@@ -41,9 +45,9 @@ export function validateCordisProtocolModule(protocol, namespace) {
 export async function smokeMountCordisProtocol(protocol, plugin) {
   const context = new Context()
   const service = protocolServiceKey(protocol)
-  const fiber = context.plugin(plugin)
 
   try {
+    const fiber = context.plugin(plugin)
     await fiber
     if (context.get(service) === undefined) {
       throw new Error(`${protocol.name} plugin did not provide ${service}`)
