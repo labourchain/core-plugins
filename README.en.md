@@ -19,9 +19,9 @@ The artifact is an already-built single gzip ESM bundle with exactly one runtime
 <protocol>-<version>.cordis-js-esm.gz
 ```
 
-A Repo Node verifies exact artifact identity, bounded-gunzips the artifact, establishes its sandbox/capability execution boundary before ESM evaluation, validates the Cordis Plugin contract and exact `protocol:*` dependency projection, and mounts it through the Host Cordis Context. Nodes do not rebuild Protocol source.
+A Repo Node verifies exact artifact identity, bounded-gunzips the artifact, establishes its sandbox/capability execution boundary before ESM evaluation, validates the Cordis Plugin contract and Protocol dependency consistency, and mounts it through the Host Cordis Context. Nodes do not rebuild Protocol source.
 
-`core.protocol` validates `dependencies[]` as chain-facing Protocol data and Protocol identity input, but it does not import artifacts or inspect `plugin.inject`. SDK/build tooling and the Node loader own descriptor-to-executable validation.
+`core.protocol` validates `dependencies[]` as chain-facing Protocol data and Protocol identity input, but it does not import artifacts or inspect `plugin.inject`. Protocol Dev SDK and Repo Node own descriptor-to-executable dependency validation.
 
 ## Agent / package entrypoint
 
