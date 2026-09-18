@@ -139,34 +139,9 @@ protocolHash
 
 其中 `protocolHash` 是权威 exact dependency identity。
 
-运行时 artifact 必须把每个 chain semantic dependency 投影为 Cordis required service dependency：
+运行时 artifact 必须把 chain Protocol dependencies 映射为 canonical Protocol service dependency `protocol:<name>@<version>`。Host 按 `protocolHash` 解析并验证 exact implementation；Cordis `inject` 决定所需 service 未就绪时 Fiber 是否可以运行。
 
-```text
-protocol:<name>@<version>
-```
-
-因此概念关系是：
-
-```text
-Protocol.dependencies[]
--> exact Protocol dependency authority
-
-plugin.inject
--> runtime service dependency
-```
-
-Host 按 `protocolHash` 解析并验证 exact implementation；Cordis `inject` 决定所需 service 未就绪时 Fiber 是否可以运行。
-
-`protocol:` 是 Protocol capability 的保留 service namespace。SDK/build gate 与 Repo Node/Host loader必须验证：
-
-```text
-projectedProtocolServices = project(Protocol.dependencies[])
-runtimeProtocolInjects = plugin.inject 中所有 protocol:* service
-
-runtimeProtocolInjects == projectedProtocolServices
-```
-
-这样运行时不存在未由 `dependencies[]` 给出 exact ProtocolHash 的隐藏 Protocol dependency。
+Descriptor 与 `plugin.inject` 的 exact projection 规则由 `runtime-abi.md` 定义，并由 Protocol Dev SDK 与 Repo Node/Host loader 验证。当前 Core artifact build/release 不调用该通用 validator。
 
 `plugin.inject` 可以额外包含 storage/logger 等非 Protocol runtime services。它们不写入 `Protocol.dependencies[]`；它们作为 executable artifact 的一部分，通过 `artifactHash` 参与 ProtocolHash。
 
@@ -179,9 +154,8 @@ runtimeProtocolInjects == projectedProtocolServices
 该 projection 必须在两个边界验证：
 
 ```text
-Protocol Dev SDK / build gate
--> validate plugin runtime contract
--> require protocol:* injects == project(Protocol.dependencies[])
+Protocol Dev SDK
+-> validate descriptor <-> plugin.inject dependency projection before publishing
 
 Repo Node / Host loader
 -> repeat the same validation on imported verified artifact
@@ -268,10 +242,11 @@ source
 -> single ESM
 -> validate explicit plugin export
 -> validate name/provide/inject/apply runtime contract
--> validate exact protocol:* dependency projection
 -> validate mount + Plugin Fiber disposal reversibility
 -> deterministic gzip
 -> ArtifactHash / ProtocolHash
+
+Protocol Dev SDK additionally validates descriptor <-> plugin.inject dependency projection before publishing.
 ```
 
 消费侧负责：
@@ -326,4 +301,4 @@ ESM namespace = { plugin }
 pure package API -> thin Cordis Plugin wrapper -> canonical Protocol service
 ```
 
-build/release gate 在 `core.protocol` 之外验证 Plugin runtime contract、exact `protocol:*` dependency projection、实际 Cordis mount 与 Plugin Fiber dispose 后的 service 撤销。当前四个 Core Protocol 的链级 `dependencies[]` 均为空；普通源码依赖被 bundle 到对应单 artifact 中。
+build/release gate 在 `core.protocol` 之外验证当前 Core Plugin runtime contract、实际 Cordis mount 与 Plugin Fiber dispose 后的 service 撤销。通用 dependency projection validator 保留在 `src/utils` 供后续 SDK/Repo 使用，但当前 Core artifact build/release 不调用它。当前四个 Core Protocol 的链级 `dependencies[]` 均为空；普通源码依赖被 bundle 到对应单 artifact 中。
