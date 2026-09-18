@@ -80,7 +80,7 @@ Executable 内的 runtime metadata（包括非 Protocol 的 runtime-only inject�
 
 “ready-to-mount executable”与“bytes 是否 embedded on-chain”是两个不同维度。初始 Core Protocols 为 bootstrap 自包含而 embedded；普通 Protocol 可以通过 cache/release/mirror 获取同一 exact artifact，但 Node 始终加载已构建的 artifact，不现场生成另一份 executable。
 
-链上 `Protocol.dependencies[]` 记录 exact Protocol dependency。Descriptor 与 `plugin.inject` 的一致性由 Protocol Dev SDK 与 Repo Node/Host loader 验证；完整规则见 `runtime-abi.md`。当前 Core artifact build/release 不调用该通用 projection validator，`core.protocol` 只验证 `dependencies[]` 的链上数据与 identity 结构。
+链上 `Protocol.dependencies[]` 只记录其他链上 Protocol 依赖；`plugin.inject` 则描述 Plugin 的全部 runtime dependencies，因此还可以包含 DSH、agent loop 等不上链公共设施。Protocol Dev SDK 与 Repo Node/Host loader 只验证每个链上 dependency 在 runtime inject 中有对应 service；完整规则见 `runtime-abi.md`。当前 Core artifact build/release 不调用该通用 helper，`core.protocol` 只验证 `dependencies[]` 的链上数据与 identity 结构。
 
 Protocol artifact 不通过任意 ESM exports 暴露 API，也不 bundle 第二份 Cordis runtime。
 
