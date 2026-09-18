@@ -89,7 +89,7 @@ verifyArtifact
 verifyEmbeddedArtifact
 ```
 
-`core.protocol` 可以验证 `dependencies[]` 作为链上 identity data 的 shape、name/version/hash、唯一性与 canonical order，但不导入 executable，因此不验证 `dependencies[] -> plugin.inject` projection。该组合验证属于 Protocol Dev SDK/build gate 与 Repo Node/Host loader。
+`core.protocol` 可以验证 `dependencies[]` 作为链上 identity data 的 shape、name/version/hash、唯一性与 canonical order，但不导入 executable，因此不验证 descriptor 与 `plugin.inject` 的 dependency projection。该组合验证属于 Protocol Dev SDK 与 Repo Node/Host loader。
 
 JCS canonical identity construction 保持 internal。构建、bundle、gzip、reproducible build、release preparation 属于 Protocol Dev SDK #23；发行与 discovery 属于 #24。
 
@@ -264,16 +264,7 @@ protocol:<name>@<version>
 
 Cordis `inject` 实际控制 Fiber runtime activation；Host 在挂载前按 chain dependency 的 ProtocolHash 解析并验证 exact implementation。
 
-对于保留的 `protocol:` service namespace，SDK/build gate 与 Repo Node/Host loader 必须验证双向一致：
-
-```text
-projectedProtocolServices = project(Protocol.dependencies[])
-runtimeProtocolInjects = plugin.inject 中所有 protocol:* service
-
-runtimeProtocolInjects == projectedProtocolServices
-```
-
-这样每一个运行时 Protocol 依赖都有对应的链上 exact ProtocolHash，也不会把未声明的 Protocol 依赖藏在 `plugin.inject` 中。
+运行时 Protocol dependency 必须能对应到链上的 exact ProtocolHash；具体 descriptor ↔ `plugin.inject` projection 规则由 `docs/runtime-abi.md` 定义，并由 Protocol Dev SDK 与 Repo Node/Host loader执行。当前 Core artifact build/release 不调用该通用 projection validator。
 
 `plugin.inject` 可以额外依赖 storage/logger 等非 Protocol runtime services。它们不写入 `Protocol.dependencies[]`；作为 executable artifact 的一部分，它们随 `artifactHash` 一起参与 ProtocolHash。
 
@@ -299,7 +290,7 @@ sandbox / capability execution boundary
 ESM materialization/evaluation/import inside that boundary
 explicit `plugin` export validation
 plugin name/provide/inject/apply validation
-semantic dependency -> inject projection validation
+Protocol dependency projection validation
 ctx.plugin(plugin)
 Cordis Fiber / Service / effect lifecycle
 Asset fetch / storage
@@ -344,4 +335,4 @@ ESM namespace = { plugin }
 pure package API -> thin Cordis Plugin wrapper
 ```
 
-build/release gate 在 `core.protocol` 之外检查 runtime contract、Protocol dependency projection 与 Cordis Plugin lifecycle；`core.protocol` 本身保持 deterministic chain-data / identity / exact-artifact primitive。
+build/release gate 在 `core.protocol` 之外检查当前 Core Plugin runtime contract 与 Cordis Plugin lifecycle；通用 Protocol dependency projection validator 独立保留给后续 SDK/Repo，不进入当前 Core artifact flow。`core.protocol` 本身保持 deterministic chain-data / identity / exact-artifact primitive。
