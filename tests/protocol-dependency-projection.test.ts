@@ -9,26 +9,27 @@ const dependency: ProtocolDependency = {
 }
 
 describe('Protocol dependency projection utility', () => {
-  it('accepts exact protocol service projection with additional runtime services', () => {
+  it('accepts declared chain dependencies plus extra runtime services', () => {
     expect(() => validateProtocolDependencyProjection(
       [dependency],
-      ['protocol:core.record@0.1.0', 'storage'],
+      [
+        'protocol:core.record@0.1.0',
+        'dsh',
+        'agent-loop',
+        'storage',
+      ],
     )).not.toThrow()
 
     expect(() => validateProtocolDependencyProjection(
       [dependency],
-      { 'protocol:core.record@0.1.0': null, logger: null },
+      new Set(['protocol:core.record@0.1.0', 'logger']),
     )).not.toThrow()
   })
 
-  it('rejects missing or undeclared protocol services', () => {
-    expect(() => validateProtocolDependencyProjection([dependency], [])).toThrow(
-      /missing Protocol dependency protocol:core\.record@0\.1\.0/,
-    )
-
+  it('rejects a missing declared chain dependency', () => {
     expect(() => validateProtocolDependencyProjection(
       [dependency],
-      ['protocol:core.record@0.1.0', 'protocol:undeclared.fact@1.0.0'],
-    )).toThrow(/undeclared Protocol dependency protocol:undeclared\.fact@1\.0\.0/)
+      ['dsh', 'agent-loop'],
+    )).toThrow(/missing Protocol dependency protocol:core\.record@0\.1\.0/)
   })
 })
