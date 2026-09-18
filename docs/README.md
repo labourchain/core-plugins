@@ -63,7 +63,7 @@ verify ArtifactHash / ProtocolHash
 -> establish sandbox/capability execution boundary
 -> evaluate/import ESM inside that boundary
 -> validate explicit `plugin`
--> validate exact protocol:* dependency projection
+-> validate Protocol dependency consistency
 -> resolve exact Protocol dependencies
 -> ctx.plugin(plugin)
 ```
@@ -80,15 +80,7 @@ Executable 内的 runtime metadata（包括非 Protocol 的 runtime-only inject�
 
 “ready-to-mount executable”与“bytes 是否 embedded on-chain”是两个不同维度。初始 Core Protocols 为 bootstrap 自包含而 embedded；普通 Protocol 可以通过 cache/release/mirror 获取同一 exact artifact，但 Node 始终加载已构建的 artifact，不现场生成另一份 executable。
 
-链上 `Protocol.dependencies[]` 记录 exact Protocol dependency。对于保留的 `protocol:` service namespace：
-
-```text
-plugin.inject 中所有 protocol:* service
-==
-project(Protocol.dependencies[])
-```
-
-SDK/build gate 与 Repo Node/Host loader 负责这个组合验证；`core.protocol` 只验证 `dependencies[]` 的链上数据与 identity 结构。storage/logger 等非 Protocol runtime service 可以额外出现在 `plugin.inject` 中。
+链上 `Protocol.dependencies[]` 记录 exact Protocol dependency。Descriptor 与 `plugin.inject` 的一致性由 Protocol Dev SDK 与 Repo Node/Host loader 验证；完整规则见 `runtime-abi.md`。当前 Core artifact build/release 不调用该通用 projection validator，`core.protocol` 只验证 `dependencies[]` 的链上数据与 identity 结构。
 
 Protocol artifact 不通过任意 ESM exports 暴露 API，也不 bundle 第二份 Cordis runtime。
 
@@ -193,7 +185,7 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 - `core.protocol` single-artifact identity/runtime-verification 已实现，并使用 `cordis-js-esm` runtime kind；
 - `core.record`、`core.entity` 与 ordinary `core.block` confirmation primitives 已实现；
 - 四个 Core executable artifacts 只导出 `plugin` 的 thin Cordis Plugin wrapper，同时 package subpath API 保持纯实现；
-- build/release gate 在 `core.protocol` 之外验证 `plugin.name/provide/inject/apply`、exact `protocol:*` dependency projection、实际 Cordis mount 与 Plugin Fiber dispose 后 service 撤销；
+- build/release gate 在 `core.protocol` 之外验证当前 Core Plugin 的 `name/provide/inject/apply`、实际 Cordis mount 与 Plugin Fiber dispose 后 service 撤销；通用 dependency projection validator 独立保留给后续 SDK/Repo 使用，不进入当前 artifact flow；
 - release asset naming 使用 `.cordis-js-esm.gz`，当前 Core ProtocolHash fixtures 已冻结；
 - Protocol Dev SDK 由 #23 延后到 Core/Repo 边界完成后；
 - GitHub Release-only release/distribution 由 #24 收敛；
