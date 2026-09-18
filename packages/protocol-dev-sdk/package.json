@@ -1,0 +1,33 @@
+{
+  "name": "@labourchain/protocol-dev-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Developer-side deterministic Protocol artifact builder for LabourChain",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
+    }
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.d.ts"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build"
+  },
+  "dependencies": {
+    "@labourchain/core-protocols": "workspace:*",
+    "esbuild": "0.28.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10"
+  }
+}
