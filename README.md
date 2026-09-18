@@ -42,9 +42,9 @@ Release filename 使用：
 <protocol>-<version>.cordis-js-esm.gz
 ```
 
-Repo Node 获取 exact artifact 后负责校验、bounded gunzip，在自身 sandbox/capability execution boundary 内 evaluate/import ESM，验证 Cordis Plugin contract 与 exact `protocol:*` dependency projection，再通过 Host Cordis Context 挂载；Node 不从源码重新构建 Protocol。
+Repo Node 获取 exact artifact 后负责校验、bounded gunzip，在自身 sandbox/capability execution boundary 内 evaluate/import ESM，验证 Cordis Plugin contract 与 Protocol dependency consistency，再通过 Host Cordis Context 挂载；Node 不从源码重新构建 Protocol。
 
-`core.protocol` 自身是确定性的链数据/identity primitive。它验证 `dependencies[]` 作为 Protocol data 和 Protocol identity 输入的合法性，但不导入 artifact，也不读取 `plugin.inject`；descriptor 与 executable 的组合验证由 SDK/build tooling 与 Node loader 负责。
+`core.protocol` 自身是确定性的链数据/identity primitive。它验证 `dependencies[]` 作为 Protocol data 和 Protocol identity 输入的合法性，但不导入 artifact，也不读取 `plugin.inject`；descriptor 与 executable 的依赖一致性验证由 Protocol Dev SDK 与 Repo Node 负责。
 
 ## Package exports
 
