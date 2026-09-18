@@ -88,7 +88,7 @@ resolve exact gzip artifact bytes
 
 这里的 gunzip、缓存、临时文件/materialization、ESM evaluation/import 和 mount 都属于加载过程，不属于重新构建 Protocol。
 
-ArtifactHash / ProtocolHash verification只确认 exact bytes 与 identity，不说明代码可以在 Host 主进程中无约束执行。ESM 顶层代码会在 import/evaluation 阶段执行，因此 Repo Node MUST 在该阶段之前建立 sandbox/capability boundary。ABI v1 只规定这个责任边界，不规定具体 sandbox 技术。
+ArtifactHash / ProtocolHash verification 只确认 exact bytes 与 identity，不说明代码可以在 Host 主进程中无约束执行。ESM 顶层代码会在 import/evaluation 阶段执行，因此 Repo Node MUST 在该阶段之前建立 sandbox/capability boundary。ABI v1 只规定这个责任边界，不规定具体 sandbox 技术。
 
 当前 Core build/release smoke 直接 import 本仓库自己生成的四个 Core fixtures，用于验证发行资产；这不等价于 Repo Node 对任意外部 Protocol 的安全加载策略。
 
@@ -145,7 +145,7 @@ protocol:<name>@<version>
 
 Host 仍必须按 `protocolHash` 解析和验证 exact dependency implementation；`inject` 本身不替代 ProtocolHash authority。
 
-`protocol:` 是 Protocol capability 的保留 service namespace。SDK/build gate 与 Repo Node/Host loader 必须比较：
+`protocol:` 是 Protocol capability 的保留 service namespace。Protocol Dev SDK 与 Repo Node/Host loader 必须比较：
 
 ```text
 projectedProtocolServices = project(Protocol.dependencies[])
@@ -173,9 +173,8 @@ core.protocol
 -> validate Protocol.dependencies[] as chain data
    fields / names / exact SemVer / ProtocolHash / uniqueness / canonical identity
 
-Protocol Dev SDK / release build gate
--> validate built plugin runtime contract
--> compare protocol:* plugin.inject with Protocol.dependencies[] projection
+Protocol Dev SDK
+-> validate descriptor <-> executable dependency projection before publishing
 
 Repo Node / Host loader
 -> repeat runtime contract / projection validation
@@ -212,20 +211,21 @@ ArtifactHash = DoubleSHA256(exact gzip artifact bytes)
 
 ## Build / Node responsibility split
 
-Protocol Dev SDK #23 / 当前 release build gate 负责发布侧工作：
+发布侧构建最终 executable。当前 Core build/release gate 只验证本仓库 Core Plugin 的 runtime contract 与生命周期：
 
 ```text
 source entry
 -> bundle ordinary source/build dependencies
 -> construct thin Cordis Plugin wrapper
 -> enforce explicit `plugin` export
--> validate plugin.name / provide / inject / apply
--> validate exact protocol:* dependency projection
+-> validate plugin.name / provide / explicit inject / apply
 -> actual Cordis mount + Fiber disposal smoke
 -> deterministic gzip
 -> ArtifactHash / ProtocolHash
 -> diagnostics / release preparation
 ```
+
+Protocol Dev SDK #23 在此基础上承担通用 descriptor ↔ `plugin.inject` dependency projection validation。该 validator 可以独立保留供 SDK/Repo 复用，但当前 Core artifact build/release 不调用它。
 
 Repo Node / runtime 负责消费侧工作：
 
@@ -258,6 +258,6 @@ artifact filename = <protocol>-<version>.cordis-js-esm.gz
 ESM namespace = { plugin }
 ```
 
-当前四个 Core Protocol 的 `dependencies[] = []`，源码级相互引用被 bundle 到各自 single artifact 中。build/release gate 验证 exact module export、`name/provide/inject/apply`、Protocol dependency projection、实际 Cordis mount 与 Fiber disposal 后 service 撤销。
+当前四个 Core Protocol 的 `dependencies[] = []`，源码级相互引用被 bundle 到各自 single artifact 中。build/release gate 验证 exact module export、`name/provide/inject/apply`、实际 Cordis mount 与 Fiber disposal 后 service 撤销；通用 dependency projection helper 独立保留，不进入当前 artifact flow。
 
 Genesis #10 消费 ordinary Protocol values / ProtocolHashes；本 ABI 不定义 Genesis-specific Record 或 Block 规则。
