@@ -139,11 +139,11 @@ protocolHash
 
 其中 `protocolHash` 是权威 exact dependency identity。
 
-运行时 artifact 必须把每个 chain Protocol dependency 映射为 canonical Protocol service dependency `protocol:<name>@<version>`。Host 按 `protocolHash` 解析并验证 exact implementation；Cordis `inject` 决定所需 service 未就绪时 Fiber 是否可以运行。
+按照当前 runtime naming 约定，chain Protocol dependency 对应 canonical Protocol service key `protocol:<name>@<version>`。Host 按 `protocolHash` 解析并验证 exact implementation；Cordis `inject` 决定所需 runtime service 未就绪时 Fiber 是否可以运行。
 
 `plugin.inject` 描述 Plugin 的全部运行时依赖，因此允许额外包含不上链的公共设施，例如 DSH、agent loop、storage、logger。它们不需要也不应该仅因为被 inject 就写入 `Protocol.dependencies[]`。
 
-因此 descriptor/runtime 的最低一致性规则是 `project(Protocol.dependencies[]) ⊆ plugin.inject`。Protocol Dev SDK 与 Repo Node/Host loader 只验证声明的链上 dependency 在 runtime inject 中存在，不反向把其他 inject 解释为链上 dependency。当前 Core artifact build/release 不调用该通用 validator。
+Core 只定义上述语义约定，不比较 `dependencies[]` 与 `plugin.inject`。实际 consistency validation 由 Protocol Dev SDK 在发布侧执行，并由 Repo Node/runtime 在加载侧执行；具体规则不进入 `core.protocol` validity。
 
 额外 runtime inject 作为 executable artifact 的一部分，通过 `artifactHash` 参与 ProtocolHash，但没有独立的链上 `ProtocolDependency` 字段。
 
@@ -157,11 +157,11 @@ protocolHash
 
 ```text
 Protocol Dev SDK
--> require every chain Protocol dependency to appear in plugin.inject before publishing
+-> validate descriptor/runtime dependency consistency before publishing
 
 Repo Node / Host loader
--> repeat the same one-way validation on imported verified artifact
--> resolve each dependency by exact ProtocolHash
+-> validate runtime dependency consistency on imported verified artifact
+-> resolve each chain dependency by exact ProtocolHash
 ```
 
 这样 `core.protocol` 保持纯 identity/verification primitive，Cordis-aware 组合逻辑留在真正持有 executable module 的 SDK/Node。SDK 的完整约束见 #23。
@@ -248,7 +248,7 @@ source
 -> deterministic gzip
 -> ArtifactHash / ProtocolHash
 
-Protocol Dev SDK additionally validates descriptor <-> plugin.inject dependency projection before publishing.
+Protocol Dev SDK additionally performs descriptor/runtime dependency consistency validation before publishing.
 ```
 
 消费侧负责：
@@ -260,7 +260,7 @@ resolve exact bytes
 -> establish sandbox/capability execution boundary
 -> evaluate/import ESM inside that boundary
 -> validate explicit plugin export/runtime contract
--> validate exact protocol:* dependency projection
+-> validate runtime dependency consistency
 -> resolve exact dependency ProtocolHashes
 -> mount through Host Cordis
 ```
@@ -303,4 +303,4 @@ ESM namespace = { plugin }
 pure package API -> thin Cordis Plugin wrapper -> canonical Protocol service
 ```
 
-build/release gate 在 `core.protocol` 之外验证当前 Core Plugin runtime contract、实际 Cordis mount 与 Plugin Fiber dispose 后的 service 撤销。通用 dependency projection validator 保留在 `src/utils` 供后续 SDK/Repo 使用，但当前 Core artifact build/release 不调用它。当前四个 Core Protocol 的链级 `dependencies[]` 均为空；普通源码依赖被 bundle 到对应单 artifact 中。
+build/release gate 在 `core.protocol` 之外验证当前 Core Plugin runtime contract、实际 Cordis mount 与 Plugin Fiber dispose 后的 service 撤销。通用 dependency/inject consistency validator 不在 Core 中实现；后续由 SDK/Repo runtime 各自在自己的边界完成。当前四个 Core Protocol 的链级 `dependencies[]` 均为空；普通源码依赖被 bundle 到对应 single artifact 中。
