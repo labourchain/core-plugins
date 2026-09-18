@@ -156,6 +156,10 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 
 定义 `cordis-js-esm` ABI v1：ready-to-mount single gzip artifact、显式 `plugin` export、Cordis name/provide/inject/apply contract、Protocol dependency projection、Plugin Fiber 可逆生命周期、1 MiB bounded gunzip、Host execution boundary，以及 Host/Node 不重新构建 Protocol 的边界。
 
+### [`protocol-dev-sdk.md`](protocol-dev-sdk.md)
+
+定义 developer-side `buildProtocol()` 边界、固定 esbuild/gzip profile、Cordis Plugin runtime validation、Protocol dependency/inject projection 与 Core artifact builder 迁移要求。
+
 ### [`release.md`](release.md)
 
 定义当前 GitHub Release-only 发行流程、`.cordis-js-esm.gz` release assets、tag/version 规则、固定发行构建环境、identity regression gate 与 npm 延后边界。
@@ -187,6 +191,6 @@ recordsRoot([A,B,C]) == recordsRoot([A,B,C,C])
 - 四个 Core executable artifacts 只导出 `plugin` 的 thin Cordis Plugin wrapper，同时 package subpath API 保持纯实现；
 - build/release gate 在 `core.protocol` 之外验证当前 Core Plugin 的 `name/provide/inject/apply`、实际 Cordis mount 与 Plugin Fiber dispose 后 service 撤销；通用 dependency/inject consistency validation 不在 Core 中实现；
 - release asset naming 使用 `.cordis-js-esm.gz`，当前 Core ProtocolHash fixtures 已冻结；
-- Protocol Dev SDK 由 #23 延后到 Core/Repo 边界完成后；
+- Protocol Dev SDK #23 已在 Core v0.1.0 后进入实现阶段，保持为独立 workspace package；
 - GitHub Release-only release/distribution 由 #24 收敛；
 - Genesis #10 只继续收敛 deterministic assembly/fixture，不重新打开 ordinary Record/Block identity rules。
