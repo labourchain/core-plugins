@@ -118,7 +118,7 @@ After build, verification MUST read the emitted files from disk and, for every P
 
 Steps 9-14 are release/build validation, not `core.protocol` behavior. `core.protocol` itself MUST remain unaware of ESM exports, Cordis metadata, `plugin.inject`, dependency projection, sandboxing, and lifecycle validation.
 
-Descriptor ↔ `plugin.inject` dependency projection belongs to Protocol Dev SDK and Repo Node/Host loading, not to this Core release verifier. A reusable helper may remain in `src/utils`, but the current artifact build/release flow MUST NOT invoke it.
+On-chain `dependencies[]` to runtime inject inclusion belongs to Protocol Dev SDK and Repo Node/Host loading, not to this Core release verifier. A reusable helper may remain in `src/utils`, consume already-normalized service names, and check only that declared chain dependencies are present; the current artifact build/release flow MUST NOT invoke it.
 
 The Core release verifier directly imports only repository-owned Core fixtures. Repo Node handling arbitrary external Protocol artifacts MUST establish its sandbox/capability execution boundary before ESM top-level code is evaluated. Exact artifact verification proves identity, not execution safety.
 
