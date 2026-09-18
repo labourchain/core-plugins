@@ -137,7 +137,7 @@ runtimeProtocolInjects == projectedProtocolServices
 
 This equality MUST be validated by:
 
-- Protocol Dev SDK / current release build gate before publishing the artifact;
+- Protocol Dev SDK before publishing the artifact;
 - Repo Node / Host loader after importing the verified artifact and before mounting it.
 
 `core.protocol` MUST NOT perform this projection validation. It validates `dependencies[]` only as chain data and Protocol identity input.
@@ -172,7 +172,7 @@ Artifact generation MUST:
 - emit exactly the `plugin` runtime export;
 - emit no sourcemap or legal-comment side file;
 - reject a decompressed ESM bundle larger than 1 MiB;
-- validate `plugin` metadata/shape and exact `protocol:*` dependency projection before release;
+- validate current Core `plugin` metadata/shape before release;
 - gzip the bundle at level 9;
 - normalize the gzip header to no optional fields, `MTIME = 0`, and `OS = 255` before hashing;
 - set `artifactHash` from the exact gzip bytes;
@@ -188,7 +188,7 @@ The gzip bytes themselves are the published executable artifact bytes. Reproduci
 1. build one thin Cordis Plugin ESM bundle and reject it if it exceeds 1 MiB;
 2. import the uncompressed locally built Core module for build-time runtime-contract validation;
 3. require the ESM namespace to contain exactly `plugin`;
-4. require canonical `plugin.name`, `plugin.provide`, callable `plugin.apply`, valid Inject form, and exact `protocol:*` dependency projection;
+4. require canonical `plugin.name`, `plugin.provide`, explicit `plugin.inject`, and callable `plugin.apply`;
 5. smoke-mount the imported plugin through the Host Cordis runtime and verify the canonical provided service becomes available;
 6. dispose that Plugin Fiber and verify the canonical service is no longer available;
 7. dispose the root test Context cleanly;
@@ -200,6 +200,8 @@ The gzip bytes themselves are the published executable artifact bytes. Reproduci
 13. report decompressed runtime size, gzip artifact size, and Base64 wire size.
 
 Release verification MUST independently reread and re-import emitted artifacts from disk rather than trusting only the build-time module object.
+
+A reusable dependency projection validator MAY be retained under `src/utils` for later SDK/Repo use, but current Core artifact build/release MUST NOT call it. It is not part of any Core Protocol artifact.
 
 Direct import in the Core build/release smoke applies only to repository-owned Core fixtures. Repo Node security policy for arbitrary external Protocols MUST place ESM evaluation inside the Host execution boundary described above.
 
