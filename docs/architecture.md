@@ -89,7 +89,7 @@ verifyArtifact
 verifyEmbeddedArtifact
 ```
 
-`core.protocol` 可以验证 `dependencies[]` 作为链上 identity data 的 shape、name/version/hash、唯一性与 canonical order，但不导入 executable，因此不验证 descriptor 与 `plugin.inject` 的 dependency projection。该组合验证属于 Protocol Dev SDK 与 Repo Node/Host loader。
+`core.protocol` 可以验证 `dependencies[]` 作为链上 identity data 的 shape、name/version/hash、唯一性与 canonical order，但不导入 executable，也不读取 `plugin.inject`。Descriptor/runtime dependency consistency 属于 Protocol Dev SDK 与 Repo Node/runtime。
 
 JCS canonical identity construction 保持 internal。构建、bundle、gzip、reproducible build、release preparation 属于 Protocol Dev SDK #23；发行与 discovery 属于 #24。
 
@@ -264,9 +264,9 @@ protocol:<name>@<version>
 
 Cordis `inject` 实际控制 Fiber runtime activation；Host 在挂载前按 chain dependency 的 ProtocolHash 解析并验证 exact implementation。
 
-`plugin.inject` 描述 implementation 作为 Cordis Plugin 的全部 runtime dependencies，因此它可以是链上 `dependencies[]` 投影的超集。除链上 Protocol service 外，还可以包含 DSH、agent loop、storage、logger 等不上链的公共 runtime facilities。
+`plugin.inject` 描述 implementation 作为 Cordis Plugin 的全部 runtime dependencies，因此可以包含链上 Protocol service，也可以包含 DSH、agent loop、storage、logger 等不上链的公共 runtime facilities。
 
-因此只要求 `project(Protocol.dependencies[]) ⊆ plugin.inject`。SDK/Repo 只检查每个链上 dependency 在 runtime 中确实被声明；它们不把额外 inject 反向解释成链上 dependency。当前 Core artifact build/release 不调用该通用 projection validator。
+Core 只约定 `dependencies[]` 用于链上 Protocol 依赖、`plugin.inject` 用于 runtime dependencies；不在 Core 中比较二者或实现 consistency validator。实际检查由 Protocol Dev SDK 与 Repo Node/runtime 在各自持有 descriptor 与 executable/runtime state 的边界执行。
 
 额外 runtime inject 不写入 `Protocol.dependencies[]`；作为 executable artifact 的一部分，它们仍随 `artifactHash` 参与 ProtocolHash。
 
@@ -337,4 +337,4 @@ ESM namespace = { plugin }
 pure package API -> thin Cordis Plugin wrapper
 ```
 
-build/release gate 在 `core.protocol` 之外检查当前 Core Plugin runtime contract 与 Cordis Plugin lifecycle；通用 Protocol dependency projection validator 独立保留给后续 SDK/Repo，不进入当前 Core artifact flow。`core.protocol` 本身保持 deterministic chain-data / identity / exact-artifact primitive。
+build/release gate 在 `core.protocol` 之外检查当前 Core Plugin runtime contract 与 Cordis Plugin lifecycle。通用 dependency/inject consistency validation 不在 Core 中实现，由后续 SDK/Repo runtime 自己负责。`core.protocol` 本身保持 deterministic chain-data / identity / exact-artifact primitive。
