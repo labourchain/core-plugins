@@ -109,7 +109,7 @@ After build, verification MUST read the emitted files from disk and, for every P
 8. bounded-gunzip the raw artifact using ABI v1 limits;
 9. import the decompressed repository-owned Core ESM from a temporary materialized path;
 10. require the namespace to expose exactly `plugin`;
-11. validate canonical `plugin.name`, `plugin.provide`, callable `plugin.apply`, valid Cordis Inject form, and exact `protocol:*` dependency projection;
+11. validate canonical `plugin.name`, `plugin.provide`, explicit `plugin.inject`, and callable `plugin.apply`;
 12. smoke-mount the plugin through the Host Cordis runtime and verify the canonical Protocol service is provided;
 13. dispose that Plugin Fiber and verify the canonical Protocol service is no longer available;
 14. dispose the root test Context cleanly;
@@ -118,15 +118,7 @@ After build, verification MUST read the emitted files from disk and, for every P
 
 Steps 9-14 are release/build validation, not `core.protocol` behavior. `core.protocol` itself MUST remain unaware of ESM exports, Cordis metadata, `plugin.inject`, dependency projection, sandboxing, and lifecycle validation.
 
-For the reserved `protocol:` service namespace, release/build validation MUST require:
-
-```text
-all protocol:* names in plugin.inject
-==
-project(Protocol.dependencies[])
-```
-
-Non-Protocol runtime services MAY be injected additionally without becoming structured `ProtocolDependency` entries. Because inject metadata is part of executable bytes, it contributes to executable identity through `artifactHash`.
+Descriptor ↔ `plugin.inject` dependency projection belongs to Protocol Dev SDK and Repo Node/Host loading, not to this Core release verifier. A reusable helper may remain in `src/utils`, but the current artifact build/release flow MUST NOT invoke it.
 
 The Core release verifier directly imports only repository-owned Core fixtures. Repo Node handling arbitrary external Protocol artifacts MUST establish its sandbox/capability execution boundary before ESM top-level code is evaluated. Exact artifact verification proves identity, not execution safety.
 
