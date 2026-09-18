@@ -100,7 +100,7 @@ The imported ESM exposes exactly `plugin`. Current Core build/release smoke vali
 
 `Protocol.dependencies[]` is chain-facing exact Protocol dependency data. `core.protocol` validates its fields, exact SemVer, ProtocolHash digest, uniqueness, and canonical order only.
 
-`Protocol.dependencies[]` records only on-chain Protocol dependencies; `plugin.inject` is the Plugin's complete runtime dependency declaration and may additionally include off-chain public facilities such as DSH or agent loop. Protocol Dev SDK and Repo Node/Host loading require every chain dependency to appear in normalized runtime service names, but do not convert extra inject services back into chain dependencies. The reusable helper may live under `src/utils`, but it must not be called by the current Core artifact build/release flow or moved into `core.protocol`. The exact rule is defined in `docs/runtime-abi.md` / `spec/core-runtime-abi.md` and tracked in #23.
+`Protocol.dependencies[]` records only on-chain Protocol dependencies; `plugin.inject` is the Plugin's complete runtime dependency declaration and may additionally include off-chain public facilities such as DSH or agent loop. Core defines this semantic split only. Actual descriptor/runtime dependency consistency checks belong to Protocol Dev SDK and Repo Node/runtime and must not be implemented in Core.
 
 Core does not provide private-key signing, Protocol build/publish/resolution/loading, Entity registration state, Repository/Member authorization, PoA authorization, canonical-chain selection, storage/network transport, or Cordis runtime lifecycle unless a reviewed Core spec explicitly adds such responsibility.
 
@@ -117,7 +117,7 @@ Protocol artifacts must not bundle another Cordis runtime. Do not introduce a La
 Do not silently resolve these boundaries while working on unrelated changes:
 
 - **Genesis #10** — Genesis remains an ordinary Block of ordinary Records; remaining work is deterministic bootstrap composition/fixture design, not reopening ordinary Record/Block identity rules;
-- **Protocol Dev SDK #23** — generalized developer-side build tooling remains deferred. It owns one-way chain dependency inclusion validation against normalized runtime inject names; a reusable helper may be retained under `src/utils`, but current Core artifact build/release must not invoke it;
+- **Protocol Dev SDK #23** — generalized developer-side build tooling remains deferred. It owns developer-side descriptor/runtime dependency consistency validation; Core must not pre-implement that validator;
 - **Release/distribution #24** — GitHub Release-only is already defined; do not add another distribution channel without a reviewed requirement.
 
 Protocol/Cordis runtime alignment #31 is completed and defines the current `cordis-js-esm` ABI v1 contract.
@@ -138,4 +138,4 @@ Do not add an operating-system matrix unless concrete platform-specific behavior
 
 Tests protect meaningful contracts and demonstrated regressions. Coverage percentage, job count, and platform count are not quality goals by themselves.
 
-Meaningful current Core runtime regression coverage includes exact `plugin` export/metadata validation, actual Cordis mount/provide behavior, Plugin Fiber disposal removing the provided service, bounded gunzip, canonical release filenames, and frozen Core executable identities. Dependency projection has its own utility regression tests without entering the current artifact flow.
+Meaningful current Core runtime regression coverage includes exact `plugin` export/metadata validation, actual Cordis mount/provide behavior, Plugin Fiber disposal removing the provided service, bounded gunzip, canonical release filenames, and frozen Core executable identities.
