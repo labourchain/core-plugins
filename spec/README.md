@@ -31,7 +31,7 @@ LabourChain 的 **Protocol** 是链上稳定、版本化的语义与 exact execu
 ## 当前规格状态
 
 - [`core-protocol.md`](core-protocol.md) — 单 artifact Protocol data、ArtifactHash / ProtocolHash、strict chain-data validation、embedded/external artifact verification，以及明确排除 Cordis-aware dependency projection；
-- [`core-runtime-abi.md`](core-runtime-abi.md) — 已实现的 `cordis-js-esm` ABI v1、ready-to-mount Cordis object Plugin、canonical service、exact `protocol:*` dependency projection、Plugin lifecycle、Host execution boundary 与 1 MiB bounded gunzip；
+- [`core-runtime-abi.md`](core-runtime-abi.md) — 已实现的 `cordis-js-esm` ABI v1、ready-to-mount Cordis object Plugin、canonical service、链上 dependency 到 runtime inject 的单向投影、Plugin lifecycle、Host execution boundary 与 1 MiB bounded gunzip；
 - [`release.md`](release.md) — `.cordis-js-esm.gz` GitHub Release-only 发行资产、tag/version gate、runtime verification、identity regression gate 与 npm 延后边界；
 - [`core-record.md`](core-record.md) — ordinary Record primitive：JCS RecordId、Protocol 来源、EntityPublicKey 作者确认与 signature verification；
 - [`core-entity.md`](core-entity.md) — Entity identity data 与共享 EntityPublicKey primitive；
@@ -85,7 +85,7 @@ Executable runtime metadata 属于 artifact bytes，因此通过 `artifactHash` 
 
 ## Dependency validation boundary
 
-`Protocol.dependencies[]` 记录链上 exact Protocol dependency：
+`Protocol.dependencies[]` 只记录链上的 exact Protocol dependency：
 
 ```text
 name + version + ProtocolHash
@@ -99,7 +99,7 @@ shape / name / exact SemVer / digest / uniqueness / canonical order
 
 它不导入 artifact，不读取 `plugin.inject`，也不验证 dependency projection。
 
-Descriptor ↔ `plugin.inject` 的完整 projection 规则由 `core-runtime-abi.md` 定义，并由两个边界验证：
+`dependencies[]` 到 runtime inject 的单向 inclusion 规则由 `core-runtime-abi.md` 定义，并由两个边界验证：
 
 ```text
 Protocol Dev SDK
@@ -108,7 +108,7 @@ Repo Node / Host loader
 
 当前 Core artifact build/release 不调用通用 projection validator；该 helper 独立保留供后续 SDK/Repo 使用。
 
-Host 另外按 `protocolHash` 解析并验证 exact dependency implementation。storage/logger 等非 Protocol runtime service 可额外出现在 `plugin.inject` 中，但不成为 `ProtocolDependency` entries。
+Host 另外按 `protocolHash` 解析并验证 exact dependency implementation。`plugin.inject` 还可以包含 DSH、agent loop、storage、logger 等不上链 runtime dependencies；这些不成为 `ProtocolDependency` entries。
 
 ## Runtime verification API
 
@@ -222,7 +222,7 @@ bounded gunzip
 sandbox/capability execution boundary before ESM evaluation
 ESM materialization/evaluation/import inside that boundary
 Cordis Plugin contract validation
-exact protocol:* dependency projection validation
+chain dependency inclusion validation
 exact dependency ProtocolHash resolution
 ctx.plugin(plugin) / Cordis lifecycle
 Protocol artifact cache / external fetch
