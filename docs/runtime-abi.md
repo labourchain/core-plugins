@@ -11,7 +11,7 @@ runtime.abi = 1
 
 ABI v1 每个 Protocol 只有一个 gzip-compressed ESM executable artifact。该 artifact 是已经完成构建、可由 Host 直接加载并挂载的 Cordis Plugin bundle，不是源码包、npm package 或需要节点再次安装/编译的工程目录。
 
-链上 identity 承诺最终 executable bytes：
+链上 identity 记录最终 executable bytes：
 
 ```text
 source
@@ -55,6 +55,19 @@ Protocol capability 不通过任意 ESM exports 暴露。Core 的纯函数 packa
 
 ABI 不重新定义 Cordis Plugin、Context、Fiber、Service、inject、provide、effect 或 lifecycle。
 
+### Lifecycle reversibility
+
+Protocol Plugin 的 runtime capability 必须服从 Cordis Fiber 生命周期。对 canonical Protocol service 的 smoke verification 至少覆盖：
+
+```text
+mount Plugin Fiber
+-> canonical service becomes available
+-> dispose that Plugin Fiber
+-> canonical service is no longer available
+```
+
+只验证 mount 后 service 存在，不足以证明 Protocol Plugin 满足 Cordis 的可逆生命周期约束。
+
 ## Host loading boundary
 
 给定已经解析到的 exact artifact bytes，Host / Repo Node 负责：
@@ -63,15 +76,21 @@ ABI 不重新定义 Cordis Plugin、Context、Fiber、Service、inject、provide
 resolve exact gzip artifact bytes
 -> verify ArtifactHash / ProtocolHash
 -> bounded gunzip
--> materialize/import ESM
+-> establish sandbox / capability execution boundary
+-> materialize and evaluate/import ESM inside that boundary
 -> require exact `plugin` module export
--> validate plugin.name / provide / apply
--> verify semantic dependency projection against plugin.inject
+-> validate plugin.name / provide / inject / apply
+-> apply SDK/Repo runtime dependency checks
+-> resolve exact Protocol dependencies
 -> ctx.plugin(plugin, config?)
 -> Cordis Fiber / inject / lifecycle
 ```
 
-这里的 gunzip、缓存、临时文件/materialization、ESM import 和 mount 都属于加载过程，不属于重新构建 Protocol。
+这里的 gunzip、缓存、临时文件/materialization、ESM evaluation/import 和 mount 都属于加载过程，不属于重新构建 Protocol。
+
+ArtifactHash / ProtocolHash verification 只确认 exact bytes 与 identity，不说明代码可以在 Host 主进程中无约束执行。ESM 顶层代码会在 import/evaluation 阶段执行，因此 Repo Node MUST 在该阶段之前建立 sandbox/capability boundary。ABI v1 只规定这个责任边界，不规定具体 sandbox 技术。
+
+当前 Core build/release smoke 直接 import 本仓库自己生成的四个 Core fixtures，用于验证发行资产；这不等价于 Repo Node 对任意外部 Protocol 的安全加载策略。
 
 Host MUST NOT：
 
@@ -97,7 +116,7 @@ Protocol 源码可以使用 Cordis type-only imports 来获得开发期类型；
 
 ```text
 Host Cordis
--> import verified Protocol artifact
+-> evaluate/import verified Protocol artifact inside Host execution boundary
 -> obtain artifact.plugin
 -> ctx.plugin(artifact.plugin)
 ```
@@ -106,46 +125,31 @@ Host Cordis
 
 ## Protocol dependencies and Cordis inject
 
-`Protocol.dependencies[]` 与 Cordis `inject` 是同一依赖关系在两个层面的表达：
+`Protocol.dependencies[]` 与 Cordis `inject` 属于不同层次：前者只记录链上的 Protocol 依赖，后者记录 Plugin 的全部运行时依赖。Core 只定义这两个字段各自表示什么，不负责比较二者：
 
 ```text
 Protocol.dependencies[]
-= chain-facing semantic dependency
+= chain-facing semantic Protocol dependency
 = exact name + version + ProtocolHash
-= participates in ProtocolHash
 
 plugin.inject
 = runtime service dependency
 = controls when Cordis may activate the Fiber
 ```
 
-每一个 chain-level `ProtocolDependency` MUST 投影为 required Cordis service dependency：
+按照当前 runtime naming 约定，chain-level `ProtocolDependency` 对应的 Cordis service key 为：
 
 ```text
 protocol:<name>@<version>
 ```
 
-例如：
+Host 按 `protocolHash` 解析和验证 exact dependency implementation；`inject` 本身不替代 ProtocolHash authority。
 
-```text
-Protocol.dependencies[]
-- name: core.entity
-  version: 0.1.0
-  protocolHash: <exact hash>
+`plugin.inject` 描述 Plugin 的完整 runtime dependency set，因此可以额外声明不上链的公共设施，例如 DSH、agent loop、storage、logger。Core 不把这些额外 inject 分类或反向转换成 `ProtocolDependency`，也不规定一套 Core validity 级别的 dependency/inject 集合比较算法。
 
-plugin.inject
-- protocol:core.entity@0.1.0
-```
+实际的 dependency/inject consistency check 属于同时持有 descriptor 与 executable/runtime state 的边界：Protocol Dev SDK 在发布侧检查，Repo Node/runtime 在加载侧检查。具体检查策略由这些组件实现，而不是由 Core 代码实现。
 
-Host 仍必须按 `protocolHash` 解析和验证 exact dependency implementation；`inject` 本身不替代 ProtocolHash authority。
-
-`plugin.inject` MAY 额外声明 runtime-only Cordis services，例如 storage/logger。这些 runtime capability dependencies 不进入 `Protocol.dependencies[]`，也不进入 ProtocolHash：
-
-```text
-project(Protocol.dependencies[]) ⊆ plugin.inject
-```
-
-Cordis `Inject` 可以使用数组或 name-to-config map；SDK/Node 在做 projection validation 时只比较 required service names，不把 runtime intercept config 纳入 Protocol identity。
+Cordis `Inject` 的合法形式与 normalization 由 Cordis/runtime boundary 处理。
 
 ### Validation ownership
 
@@ -156,16 +160,16 @@ core.protocol
 -> validate Protocol.dependencies[] as chain data
    fields / names / exact SemVer / ProtocolHash / uniqueness / canonical identity
 
-Protocol Dev SDK / release build gate
--> compare built plugin.inject with Protocol.dependencies[] projection
+Protocol Dev SDK
+-> perform descriptor/runtime dependency consistency checks before publishing
 
 Repo Node / Host loader
--> compare imported plugin.inject with Protocol.dependencies[] projection
+-> repeat runtime dependency consistency checks while loading
 -> resolve and verify each exact dependency ProtocolHash
 -> mount through Cordis
 ```
 
-`core.protocol` **不读取、不导入也不理解 `plugin.inject`**，因此不负责 dependency projection validation。该验证需要同时持有 descriptor 与 executable module，属于 SDK/build 和 Node/load 的组合边界。
+`core.protocol` **不读取、不导入也不理解 `plugin.inject`**，因此不负责 dependency/inject consistency validation。该验证需要同时持有 descriptor 与 executable/runtime state，属于 SDK/build 和 Node/load 的组合边界。SDK 的具体规则由 #23 收敛。
 
 Protocol implementation 对外提供自身 capability 时使用 canonical service key：
 
@@ -194,20 +198,21 @@ ArtifactHash = DoubleSHA256(exact gzip artifact bytes)
 
 ## Build / Node responsibility split
 
-Protocol Dev SDK #23 / 当前 release build gate 负责发布侧工作：
+发布侧构建最终 executable。当前 Core build/release gate 只验证本仓库 Core Plugin 的 runtime contract 与生命周期：
 
 ```text
 source entry
 -> bundle ordinary source/build dependencies
 -> construct thin Cordis Plugin wrapper
 -> enforce explicit `plugin` export
--> validate plugin.name / provide / inject / apply
--> validate semantic dependency -> inject projection
--> actual Cordis mount smoke
+-> validate plugin.name / provide / explicit inject / apply
+-> actual Cordis mount + Fiber disposal smoke
 -> deterministic gzip
 -> ArtifactHash / ProtocolHash
 -> diagnostics / release preparation
 ```
+
+Protocol Dev SDK #23 在发布侧承担 descriptor/runtime dependency consistency validation；Repo runtime 在加载侧承担对应检查。Core repository 不保留通用 projection validator。
 
 Repo Node / runtime 负责消费侧工作：
 
@@ -215,8 +220,9 @@ Repo Node / runtime 负责消费侧工作：
 resolve
 -> verify Protocol/artifact identity through core.protocol
 -> bounded gunzip
--> import
--> validate plugin runtime contract/dependency projection
+-> establish execution sandbox/capability boundary
+-> evaluate/import ESM
+-> validate plugin runtime contract and runtime dependency consistency
 -> resolve exact Protocol dependencies
 -> mount in Host Cordis
 -> cache / dispose / reload through runtime lifecycle
@@ -239,8 +245,6 @@ artifact filename = <protocol>-<version>.cordis-js-esm.gz
 ESM namespace = { plugin }
 ```
 
-当前四个 Core Protocol 的 `dependencies[] = []`，源码级相互引用被 bundle 到各自 single artifact 中。build/release gate 已验证 exact module export、`name/provide/inject/apply`、dependency projection 与实际 Cordis mount。
+当前四个 Core Protocol 的 `dependencies[] = []`，源码级相互引用被 bundle 到各自 single artifact 中。build/release gate 只验证当前 Core artifact 自身的 exact module export、`name/provide/inject/apply`、实际 Cordis mount 与 Fiber disposal 后 service 撤销；通用 dependency/inject consistency validation 不在 Core 中实现。
 
-本迁移已改变 pre-release artifact bytes、ArtifactHash 与 ProtocolHash，并显式更新 frozen identity fixture。由于 v0.1.0 尚未发布，不保留旧 `js-esm` compatibility path。
-
-Genesis #10 消费最终冻结后的 ordinary Protocol values / ProtocolHashes；本 ABI 不定义 Genesis-specific Record 或 Block 规则。
+Genesis #10 消费 ordinary Protocol values / ProtocolHashes；本 ABI 不定义 Genesis-specific Record 或 Block 规则。

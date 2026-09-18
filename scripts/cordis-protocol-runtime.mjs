@@ -4,35 +4,6 @@ export function protocolServiceKey(protocol) {
   return `protocol:${protocol.name}@${protocol.version}`
 }
 
-export function normalizeInjectNames(inject) {
-  if (Array.isArray(inject)) {
-    const names = new Set()
-    for (const name of inject) {
-      if (typeof name !== 'string' || name.length === 0) {
-        throw new Error('plugin.inject array must contain non-empty service names')
-      }
-      if (names.has(name)) {
-        throw new Error(`plugin.inject contains duplicate service ${name}`)
-      }
-      names.add(name)
-    }
-    return names
-  }
-
-  if (typeof inject === 'object' && inject !== null) {
-    const names = new Set()
-    for (const name of Object.keys(inject)) {
-      if (name.length === 0) {
-        throw new Error('plugin.inject object contains an empty service name')
-      }
-      names.add(name)
-    }
-    return names
-  }
-
-  throw new Error('plugin.inject must use Cordis array or object form')
-}
-
 export function validateCordisProtocolModule(protocol, namespace) {
   if (typeof namespace !== 'object' || namespace === null) {
     throw new Error(`${protocol.name} runtime namespace must be an ESM module namespace`)
@@ -57,18 +28,15 @@ export function validateCordisProtocolModule(protocol, namespace) {
   if (plugin.provide !== expectedService) {
     throw new Error(`${protocol.name} plugin.provide must be ${expectedService}`)
   }
+  const inject = plugin.inject
+  if (
+    !Array.isArray(inject) &&
+    (typeof inject !== 'object' || inject === null)
+  ) {
+    throw new Error(`${protocol.name} plugin.inject must be a Cordis array or object declaration`)
+  }
   if (typeof plugin.apply !== 'function') {
     throw new Error(`${protocol.name} plugin.apply must be callable`)
-  }
-
-  const injectNames = normalizeInjectNames(plugin.inject)
-  for (const dependency of protocol.dependencies) {
-    const requiredService = `protocol:${dependency.name}@${dependency.version}`
-    if (!injectNames.has(requiredService)) {
-      throw new Error(
-        `${protocol.name} plugin.inject is missing semantic dependency ${requiredService}`,
-      )
-    }
   }
 
   return plugin
@@ -84,7 +52,12 @@ export async function smokeMountCordisProtocol(protocol, plugin) {
     if (context.get(service) === undefined) {
       throw new Error(`${protocol.name} plugin did not provide ${service}`)
     }
+
+    await fiber.dispose()
+    if (context.get(service) !== undefined) {
+      throw new Error(`${protocol.name} plugin did not release ${service} on Fiber disposal`)
+    }
   } finally {
-    await Promise.resolve(context.fiber.dispose())
+    await context.fiber.dispose()
   }
 }

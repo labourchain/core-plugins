@@ -21,16 +21,16 @@ Cordis Plugin
 = runtime composition / dependency injection / lifecycle
 ```
 
-## 当前 Runtime 方向
+## 当前 Runtime
 
-在 `v0.1.0` 之前，Core Protocol executable artifact 收敛到：
+Core Protocol executable artifact 使用：
 
 ```text
 runtime.kind = "cordis-js-esm"
 runtime.abi = 1
 ```
 
-最终 artifact 是已经构建完成的 single gzip ESM bundle，并且只有一个显式 runtime module export：
+artifact 是已经构建完成的 single gzip ESM bundle，并且只有一个显式 runtime module export：
 
 ```text
 plugin
@@ -42,9 +42,9 @@ Release filename 使用：
 <protocol>-<version>.cordis-js-esm.gz
 ```
 
-Repo Node 获取 exact artifact 后负责校验、bounded gunzip、ESM import、Cordis Plugin contract 与 semantic dependency projection 校验，然后通过 Host Cordis Context 挂载；Node 不从源码重新构建 Protocol。
+Repo Node 获取 exact artifact 后负责校验、bounded gunzip，在自身 sandbox/capability execution boundary 内 evaluate/import ESM，验证 Cordis Plugin contract 与 Protocol dependency consistency，再通过 Host Cordis Context 挂载；Node 不从源码重新构建 Protocol。
 
-`core.protocol` 自身仍是确定性的链数据/identity primitive。它验证 `dependencies[]` 作为 Protocol data 和 Protocol identity 输入的合法性，但不导入 artifact，也不读取 `plugin.inject`；descriptor 与 executable 的 dependency projection 校验由 SDK/build tooling 与 Node loader 负责。
+`core.protocol` 自身是确定性的链数据/identity primitive。它验证 `dependencies[]` 作为 Protocol data 和 Protocol identity 输入的合法性，但不导入 artifact，也不读取 `plugin.inject`；descriptor 与 executable 的依赖一致性验证由 Protocol Dev SDK 与 Repo Node 负责。
 
 ## Package exports
 
@@ -98,6 +98,6 @@ pnpm check
 
 ## Release
 
-当前外部分发使用 GitHub Releases，不发布 npm package。最终 `v0.1.0` release contract 将发布四个 exact `.cordis-js-esm.gz` Core Protocol artifacts、对应 descriptor JSON 与 `manifest.json`；消费方仍必须在加载前自行验证 ArtifactHash / ProtocolHash。
+当前外部分发使用 GitHub Releases，不发布 npm package。`v0.1.0` release contract 发布四个 exact `.cordis-js-esm.gz` Core Protocol artifacts、对应 descriptor JSON 与 `manifest.json`；消费方仍必须在加载前自行验证 ArtifactHash / ProtocolHash。
 
-`v0.1.0` 尚未创建 tag。Protocol/Cordis runtime alignment 由 issue #31 跟踪，并需在首个 release 前完成。
+`v0.1.0` 尚未创建 tag。Protocol/Cordis runtime alignment #31 已完成；Protocol Dev SDK #23 与 Genesis #10 仍按各自边界继续。

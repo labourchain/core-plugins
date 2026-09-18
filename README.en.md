@@ -2,26 +2,26 @@
 
 [中文](README.md)
 
-`@labourchain/core-protocols` provides LabourChain's minimal `core.protocol`, `core.entity`, `core.record`, and `core.block` primitives. Before `v0.1.0`, executable artifacts are being aligned to the accepted `cordis-js-esm` ABI v1 contract; architecture, implementation specifications, and historical source notes live in [`docs/`](docs/README.md) and [`spec/`](spec/README.md).
+`@labourchain/core-protocols` provides LabourChain's minimal `core.protocol`, `core.entity`, `core.record`, and `core.block` primitives. Architecture, implementation specifications, and historical source notes live in [`docs/`](docs/README.md) and [`spec/`](spec/README.md).
 
 In LabourChain, **Protocol** means stable, versioned semantics and exact executable identity referenced by chain history. **Plugin** is the Cordis runtime abstraction. A Protocol implementation executes as a Cordis Plugin, while Core does not define another plugin lifecycle system.
 
-## Runtime direction
+## Current runtime
 
 ```text
 runtime.kind = "cordis-js-esm"
 runtime.abi = 1
 ```
 
-The final artifact is an already-built single gzip ESM bundle with exactly one runtime module export, `plugin`. Release filenames use:
+The artifact is an already-built single gzip ESM bundle with exactly one runtime module export, `plugin`. Release filenames use:
 
 ```text
 <protocol>-<version>.cordis-js-esm.gz
 ```
 
-A Repo Node verifies exact artifact identity, bounded-gunzips and imports the ESM, validates its Cordis Plugin contract and semantic dependency projection, then mounts it through the Host Cordis Context. Nodes do not rebuild Protocol source.
+A Repo Node verifies exact artifact identity, bounded-gunzips the artifact, establishes its sandbox/capability execution boundary before ESM evaluation, validates the Cordis Plugin contract and Protocol dependency consistency, and mounts it through the Host Cordis Context. Nodes do not rebuild Protocol source.
 
-`core.protocol` validates `dependencies[]` as chain-facing Protocol data and as part of Protocol identity, but it does not import artifacts or inspect `plugin.inject`. SDK/build tooling and the Node loader own descriptor-to-executable dependency projection validation.
+`core.protocol` validates `dependencies[]` as chain-facing Protocol data and Protocol identity input, but it does not import artifacts or inspect `plugin.inject`. Protocol Dev SDK and Repo Node own descriptor-to-executable dependency validation.
 
 ## Agent / package entrypoint
 
@@ -45,6 +45,8 @@ These package APIs remain deterministic identity / validation / verification pri
 
 ## Release
 
-GitHub Releases are the only external release channel for now; this repository is not published to npm. The final v0.1 release contract publishes four exact `.cordis-js-esm.gz` Core Protocol artifacts, matching descriptor JSON files, and `manifest.json`. Consumers still verify ArtifactHash / ProtocolHash themselves before loading.
+GitHub Releases are the only external release channel for now; this repository is not published to npm. The v0.1 release contract publishes four exact `.cordis-js-esm.gz` Core Protocol artifacts, matching descriptor JSON files, and `manifest.json`. Consumers still verify ArtifactHash / ProtocolHash themselves before loading.
+
+Protocol/Cordis runtime alignment #31 is complete. Protocol Dev SDK #23 and Genesis #10 remain separate follow-up scopes.
 
 See [`docs/release.md`](docs/release.md) and [`spec/release.md`](spec/release.md) for the complete release contract.
