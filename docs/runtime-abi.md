@@ -125,7 +125,7 @@ Host Cordis
 
 ## Protocol dependencies and Cordis inject
 
-`Protocol.dependencies[]` 与 Cordis `inject` 分别表达链上 exact Protocol dependency 与运行时 service dependency：
+`Protocol.dependencies[]` 与 Cordis `inject` 属于不同层次：前者只记录链上的 Protocol 依赖，后者记录 Plugin 的全部运行时依赖：
 
 ```text
 Protocol.dependencies[]
@@ -145,24 +145,17 @@ protocol:<name>@<version>
 
 Host 仍必须按 `protocolHash` 解析和验证 exact dependency implementation；`inject` 本身不替代 ProtocolHash authority。
 
-`protocol:` 是 Protocol capability 的保留 service namespace。Protocol Dev SDK 与 Repo Node/Host loader 必须比较：
+每个 chain-level `ProtocolDependency` 必须投影为对应的 canonical service，并出现在 runtime inject 中：
 
 ```text
-projectedProtocolServices = project(Protocol.dependencies[])
-runtimeProtocolInjects = plugin.inject 中所有 protocol:* service
-
-runtimeProtocolInjects == projectedProtocolServices
+project(Protocol.dependencies[]) ⊆ normalizedServiceNames(plugin.inject)
 ```
 
-因此：
+反方向不成立。`plugin.inject` 描述 Plugin 的完整 runtime dependency set，因此可以额外声明不上链的公共设施，例如 DSH、agent loop、storage、logger。Core 不把这些额外 inject 分类或反向转换成 `ProtocolDependency`。
 
-- `Protocol.dependencies[]` 中的每个 dependency 都必须出现在 `plugin.inject`；
-- `plugin.inject` 中不能出现未由 `Protocol.dependencies[]` 声明的 `protocol:*` service；
-- 每个运行时 Protocol dependency 都能回到一个 exact chain-level ProtocolHash。
+Protocol Dev SDK / Repo Node 只检查链上声明的 dependencies 是否在 runtime 中得到对应声明。额外 runtime inject 作为 executable artifact 内容的一部分，通过 `artifactHash` 参与 ProtocolHash，但没有独立的链上 `ProtocolDependency` 字段。
 
-`plugin.inject` MAY 额外声明非 Protocol runtime services，例如 storage/logger。这些 runtime capability dependencies 不写入 `Protocol.dependencies[]`；它们作为 executable artifact 内容的一部分，通过 `artifactHash` 参与 ProtocolHash。
-
-Cordis `Inject` 可以使用数组或 name-to-config map；SDK/Node 做 projection validation 时比较 required service names，不把 runtime intercept config 单独建模为 Protocol data。
+Cordis `Inject` 的合法形式与 normalization 由 Cordis/runtime boundary 处理；dependency projection helper 只消费规范化后的 service names，不再实现第二套 Cordis Inject parser。
 
 ### Validation ownership
 
@@ -174,10 +167,10 @@ core.protocol
    fields / names / exact SemVer / ProtocolHash / uniqueness / canonical identity
 
 Protocol Dev SDK
--> validate descriptor <-> executable dependency projection before publishing
+-> require every chain Protocol dependency in normalized runtime inject before publishing
 
 Repo Node / Host loader
--> repeat runtime contract / projection validation
+-> repeat runtime contract and one-way dependency validation
 -> resolve and verify each exact dependency ProtocolHash
 -> mount through Cordis
 ```
@@ -225,7 +218,7 @@ source entry
 -> diagnostics / release preparation
 ```
 
-Protocol Dev SDK #23 在此基础上承担通用 descriptor ↔ `plugin.inject` dependency projection validation。该 validator 可以独立保留供 SDK/Repo 复用，但当前 Core artifact build/release 不调用它。
+Protocol Dev SDK #23 在此基础上验证链上 `dependencies[]` 是否都能映射到 runtime inject。该 helper 只接受已经 normalization 的 service names，可供 SDK/Repo 复用，但当前 Core artifact build/release 不调用它。
 
 Repo Node / runtime 负责消费侧工作：
 
@@ -235,7 +228,7 @@ resolve
 -> bounded gunzip
 -> establish execution sandbox/capability boundary
 -> evaluate/import ESM
--> validate plugin runtime contract and exact protocol:* projection
+-> validate plugin runtime contract and chain dependency inclusion
 -> resolve exact Protocol dependencies
 -> mount in Host Cordis
 -> cache / dispose / reload through runtime lifecycle
