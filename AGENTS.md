@@ -117,7 +117,7 @@ Protocol artifacts must not bundle another Cordis runtime. Do not introduce a La
 Do not silently resolve these boundaries while working on unrelated changes:
 
 - **Genesis #10** — Genesis remains an ordinary Block of ordinary Records; remaining work is deterministic bootstrap composition/fixture design, not reopening ordinary Record/Block identity rules;
-- **Protocol Dev SDK #23** — generalized developer-side build tooling remains deferred. It owns developer-side descriptor/runtime dependency consistency validation; Core must not pre-implement that validator;
+- **Protocol Dev SDK #23** — active after Core v0.1.0. It owns developer-side descriptor/runtime dependency consistency validation and deterministic Protocol artifact construction; `core.protocol` must remain free of that tooling;
 - **Release/distribution #24** — GitHub Release-only is already defined; do not add another distribution channel without a reviewed requirement.
 
 Protocol/Cordis runtime alignment #31 is completed and defines the current `cordis-js-esm` ABI v1 contract.
