@@ -61,6 +61,10 @@ describe('Cordis Protocol runtime contract', () => {
     delete missingInject.plugin.inject
     expect(() => validateCordisProtocolModule(value, missingInject)).toThrow(/plugin\.inject/)
 
+    const badInject = namespaceFor(value)
+    badInject.plugin.inject = 'storage'
+    expect(() => validateCordisProtocolModule(value, badInject)).toThrow(/plugin\.inject/)
+
     const badApply = namespaceFor(value)
     badApply.plugin.apply = undefined
     expect(() => validateCordisProtocolModule(value, badApply)).toThrow(/plugin\.apply/)
