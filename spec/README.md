@@ -32,6 +32,7 @@ LabourChain 的 **Protocol** 是链上稳定、版本化的语义与 exact execu
 
 - [`core-protocol.md`](core-protocol.md) — 单 artifact Protocol data、ArtifactHash / ProtocolHash、strict chain-data validation、embedded/external artifact verification，以及明确排除 Cordis-aware dependency projection；
 - [`core-runtime-abi.md`](core-runtime-abi.md) — 已实现的 `cordis-js-esm` ABI v1、ready-to-mount Cordis object Plugin、canonical service、链上 dependency 与 runtime inject 的职责边界、Plugin lifecycle、Host execution boundary 与 1 MiB bounded gunzip；
+- [`protocol-dev-sdk.md`](protocol-dev-sdk.md) — 独立 developer-side `buildProtocol()`、固定构建 profile、Plugin metadata/dependency projection validation、deterministic gzip 与 Core artifact identity-preserving migration；
 - [`release.md`](release.md) — `.cordis-js-esm.gz` GitHub Release-only 发行资产、tag/version gate、runtime verification、identity regression gate 与 npm 延后边界；
 - [`core-record.md`](core-record.md) — ordinary Record primitive：JCS RecordId、Protocol 来源、EntityPublicKey 作者确认与 signature verification；
 - [`core-entity.md`](core-entity.md) — Entity identity data 与共享 EntityPublicKey primitive；
@@ -240,6 +241,6 @@ observability
 
 - #22 的 single-artifact identity/runtime-verification 基础已完成，#29 恢复其 Protocol 命名；
 - #31 Protocol/Cordis runtime alignment 已完成并形成当前 `cordis-js-esm` ABI v1；
-- #23 Protocol Dev SDK 仍延后，并明确承担 developer-side Cordis runtime/dependency validation；
+- #23 Protocol Dev SDK 已在 Core v0.1.0 后进入实现，并承担 developer-side Cordis runtime/dependency validation；
 - #24 GitHub Release-only release/distribution flow 已收敛；
 - #10 只收敛 deterministic Genesis assembly/fixture details，不重新打开 ordinary Core identity rules。
