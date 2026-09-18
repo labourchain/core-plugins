@@ -248,15 +248,15 @@ Genesis 的 deterministic assembly 由 #10 独立处理；`core.protocol` 不定
 
 ## Chain dependency 与 runtime dependency
 
-`Protocol.dependencies[]` 是链上语义依赖：
+`Protocol.dependencies[]` 只记录链上的 Protocol 依赖：
 
 ```text
 name + version + exact ProtocolHash
 ```
 
-它进入 ProtocolHash，因此属于 historical semantic identity。
+它进入 ProtocolHash，因此属于 historical semantic identity。它不试图描述 implementation 运行时所需的全部 Plugin/Service。
 
-每个 semantic dependency 必须投影为 Cordis required service dependency：
+每个链上 Protocol dependency 在运行时都必须有对应的 Cordis service dependency：
 
 ```text
 protocol:<name>@<version>
@@ -264,9 +264,11 @@ protocol:<name>@<version>
 
 Cordis `inject` 实际控制 Fiber runtime activation；Host 在挂载前按 chain dependency 的 ProtocolHash 解析并验证 exact implementation。
 
-运行时 Protocol dependency 必须能对应到链上的 exact ProtocolHash；具体 descriptor ↔ `plugin.inject` projection 规则由 `docs/runtime-abi.md` 定义，并由 Protocol Dev SDK 与 Repo Node/Host loader执行。当前 Core artifact build/release 不调用该通用 projection validator。
+`plugin.inject` 描述 implementation 作为 Cordis Plugin 的全部 runtime dependencies，因此它可以是链上 `dependencies[]` 投影的超集。除链上 Protocol service 外，还可以包含 DSH、agent loop、storage、logger 等不上链的公共 runtime facilities。
 
-`plugin.inject` 可以额外依赖 storage/logger 等非 Protocol runtime services。它们不写入 `Protocol.dependencies[]`；作为 executable artifact 的一部分，它们随 `artifactHash` 一起参与 ProtocolHash。
+因此只要求 `project(Protocol.dependencies[]) ⊆ plugin.inject`。SDK/Repo 只检查每个链上 dependency 在 runtime 中确实被声明；它们不把额外 inject 反向解释成链上 dependency。当前 Core artifact build/release 不调用该通用 projection validator。
+
+额外 runtime inject 不写入 `Protocol.dependencies[]`；作为 executable artifact 的一部分，它们仍随 `artifactHash` 参与 ProtocolHash。
 
 Protocol implementation 对外声明并提供自身 capability：
 
@@ -300,7 +302,7 @@ secret-key storage / signer
 observability
 ```
 
-ArtifactHash / ProtocolHash verification只确认 exact bytes 与 identity，不把 artifact 变成可信代码。Repo Node 必须在 ESM 顶层代码被执行之前建立自身 sandbox/capability boundary；具体 sandbox 机制属于 Repo runtime 设计，不由 Core ABI 实现。
+ArtifactHash / ProtocolHash verification 只确认 exact bytes 与 identity，不把 artifact 变成可信代码。Repo Node 必须在 ESM 顶层代码被执行之前建立自身 sandbox/capability boundary；具体 sandbox 机制属于 Repo runtime 设计，不由 Core ABI 实现。
 
 Runtime 不负责：
 
