@@ -99,21 +99,14 @@ shape / name / exact SemVer / digest / uniqueness / canonical order
 
 它不导入 artifact，不读取 `plugin.inject`，也不验证 dependency projection。
 
-对于保留的 `protocol:` service namespace：
+Descriptor ↔ `plugin.inject` 的完整 projection 规则由 `core-runtime-abi.md` 定义，并由两个边界验证：
 
 ```text
-projectedProtocolServices = project(Protocol.dependencies[])
-runtimeProtocolInjects = all normalized plugin.inject names beginning with "protocol:"
-
-runtimeProtocolInjects == projectedProtocolServices
-```
-
-该规则由两个边界验证：
-
-```text
-Protocol Dev SDK / current build gate
+Protocol Dev SDK
 Repo Node / Host loader
 ```
+
+当前 Core artifact build/release 不调用通用 projection validator；该 helper 独立保留供后续 SDK/Repo 使用。
 
 Host 另外按 `protocolHash` 解析并验证 exact dependency implementation。storage/logger 等非 Protocol runtime service 可额外出现在 `plugin.inject` 中，但不成为 `ProtocolDependency` entries。
 
@@ -152,7 +145,7 @@ uncompressed cordis-js-esm runtime > 1 MiB
 <protocol>-<version>.cordis-js-esm.gz
 ```
 
-并生成 `manifest.json`。`pnpm check` 必须从磁盘重新验证 exact nine-file release set、canonical filenames、descriptor/manifest/actual diagnostics、runtime Plugin contract、exact `protocol:*` dependency projection、actual Cordis mount、Plugin Fiber disposal 后 service 撤销与 frozen Core ProtocolHash fixtures。
+并生成 `manifest.json`。`pnpm check` 必须从磁盘重新验证 exact nine-file release set、canonical filenames、descriptor/manifest/actual diagnostics、runtime Plugin contract、actual Cordis mount、Plugin Fiber disposal 后 service 撤销与 frozen Core ProtocolHash fixtures。
 
 GitHub Release 仅作为分发渠道。tag 必须使用 `vMAJOR.MINOR.PATCH` 并与 generated manifest version 一致；Release job 固定当前 canonical build toolchain，先验证 tag commit 属于 `main`，再安装项目依赖，创建 draft、上传完整资产后才发布。npm publishing 当前禁止。
 
