@@ -96,21 +96,11 @@ runtime.abi = 1
 release artifact = <protocol>-<version>.cordis-js-esm.gz
 ```
 
-The imported ESM exposes exactly `plugin`. The SDK/build gate and Repo Node/Host loader validate canonical `plugin.name`, `plugin.provide`, callable `plugin.apply`, Cordis Inject form, and Protocol dependency projection. `apply()` performs actual Fiber-owned `ctx.provide()` registration.
+The imported ESM exposes exactly `plugin`. Current Core build/release smoke validates the Core Plugin shape, mount behavior, and Fiber reversibility. `apply()` performs actual Fiber-owned `ctx.provide()` registration.
 
 `Protocol.dependencies[]` is chain-facing exact Protocol dependency data. `core.protocol` validates its fields, exact SemVer, ProtocolHash digest, uniqueness, and canonical order only.
 
-For the reserved `protocol:` service namespace, Cordis-aware boundaries validate:
-
-```text
-all protocol:* names in plugin.inject
-==
-project(Protocol.dependencies[])
-```
-
-Non-Protocol runtime services may be injected additionally without becoming `ProtocolDependency` entries. Because inject metadata is part of executable bytes, it contributes to executable identity through ArtifactHash.
-
-The Host separately resolves every chain dependency by exact `protocolHash`. Never move this Cordis-aware projection validation into `core.protocol`; the generalized SDK rule is tracked in #23.
+Descriptor-to-`plugin.inject` dependency projection belongs to Protocol Dev SDK and Repo Node/Host loading. The reusable validator may live under `src/utils`, but it must not be called by the current Core artifact build/release flow or moved into `core.protocol`. The exact rule is defined in `docs/runtime-abi.md` / `spec/core-runtime-abi.md` and tracked for SDK implementation in #23.
 
 Core does not provide private-key signing, Protocol build/publish/resolution/loading, Entity registration state, Repository/Member authorization, PoA authorization, canonical-chain selection, storage/network transport, or Cordis runtime lifecycle unless a reviewed Core spec explicitly adds such responsibility.
 
@@ -127,7 +117,7 @@ Protocol artifacts must not bundle another Cordis runtime. Do not introduce a La
 Do not silently resolve these boundaries while working on unrelated changes:
 
 - **Genesis #10** — Genesis remains an ordinary Block of ordinary Records; remaining work is deterministic bootstrap composition/fixture design, not reopening ordinary Record/Block identity rules;
-- **Protocol Dev SDK #23** — generalized developer-side build tooling remains deferred. It owns Cordis-aware build validation, including exact `protocol:*` inject projection; do not move that logic into `core.protocol`;
+- **Protocol Dev SDK #23** — generalized developer-side build tooling remains deferred. It owns Cordis-aware dependency projection validation; a reusable helper may be retained under `src/utils`, but current Core artifact build/release must not invoke it;
 - **Release/distribution #24** — GitHub Release-only is already defined; do not add another distribution channel without a reviewed requirement.
 
 Protocol/Cordis runtime alignment #31 is completed and defines the current `cordis-js-esm` ABI v1 contract.
@@ -148,4 +138,4 @@ Do not add an operating-system matrix unless concrete platform-specific behavior
 
 Tests protect meaningful contracts and demonstrated regressions. Coverage percentage, job count, and platform count are not quality goals by themselves.
 
-Meaningful runtime regression coverage includes exact `plugin` export/metadata validation, exact `protocol:*` dependency projection outside `core.protocol`, actual Cordis mount/provide behavior, Plugin Fiber disposal removing the provided service, bounded gunzip, canonical release filenames, and frozen Core executable identities.
+Meaningful current Core runtime regression coverage includes exact `plugin` export/metadata validation, actual Cordis mount/provide behavior, Plugin Fiber disposal removing the provided service, bounded gunzip, canonical release filenames, and frozen Core executable identities. Dependency projection has its own utility regression tests without entering the current artifact flow.
